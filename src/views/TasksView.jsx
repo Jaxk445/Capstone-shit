@@ -239,7 +239,7 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
                     {userProfile.role === 'supervisor' && task.status === 'Completed' && (
                         <>
                             <button onClick={() => handleStatusChange(task.id, 'Approved')} className="text-green-600 hover:text-green-800 font-bold bg-green-50 px-2 py-1 rounded">Approve</button>
-                            <button onClick={() => { const fb = prompt("Reason for revision:"); if(fb) supabase.from('tasks').update({ status: 'Revision Needed', feedback: fb }).eq('id', task.id).then(fetchTasks); }} className="text-red-600 hover:text-red-800 bg-red-50 px-2 py-1 rounded">Reject</button>
+                            <button onClick={() => { const fb = prompt("Reason for revision:"); supabase.from('tasks').update({ status: 'Revision Needed', feedback: fb }).eq('id', task.id).then(fetchTasks); }} className="text-red-600 hover:text-red-800 bg-red-50 px-2 py-1 rounded">Reject</button>
                         </>
                     )}
                 </div>
