@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import LoginLogo from '../assets/customs-logo.jpg';
 import BackgroundImage from '../assets/becuk foto.jpg'; // <--- Your uploaded background
+import { createRateLimiter } from '../utils/rateLimiter'; // Rate Limiter for DoS prevention
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -15,6 +16,9 @@ const LoginPage = () => {
   
   // --- PARALLAX EFFECT STATE ---
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // Rate Limiter Instance (5 attempts per minute)
+  const loginLimiter = createRateLimiter(5, 60000);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -33,6 +37,13 @@ const LoginPage = () => {
     setError('');
     setMessage('');
     setLoading(true);
+
+    // Rate Limiter Checker
+    if (!loginLimiter(email)) {
+      setError('Too many login attempts. Please try again in 1 minute.');
+      setLoading(false);
+      return;
+    }
 
     try {
         if (isRegisterMode) {

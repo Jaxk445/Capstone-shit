@@ -104,7 +104,9 @@ export default function App() {
     if (!userId) return;
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (!error) setUserProfile(data);
-    else console.error('Error fetching profile:', error);
+    else if (process.env.NODE_ENV === 'development') {
+      console.error('[Dev] Error fetching profile');
+    }
   };
 
   const fetchAllUsers = async () => {
