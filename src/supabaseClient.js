@@ -7,7 +7,9 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 
 // --- ADD THIS LINE FOR DEBUGGING ---
-console.log("Supabase URL from env:", supabaseUrl);
+if (import.meta.env.DEV) console.log("Supabase URL from env:", supabaseUrl);
 // --- END DEBUGGING LINE ---
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+	auth: { persistSession: true, detectSessionInUrl: true }
+});
