@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import Modal from '../components/Modal';
 import ExportButton from '../components/ExportButton';
+import { sanitizeFeedback, sanitizeTaskTitle, sanitizeTaskDescription, validateRequired } from '../utils/sanitizer';
 
 // --- HELPER: USER AVATAR ---
 const UserAvatar = ({ user, size = "w-6 h-6", textSize = "text-[9px]" }) => {
@@ -111,9 +112,14 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
             alert('Please fill out all required fields.');
             return;
         }
+        
+        // Sanitize inputs before storing
+        const sanitizedTitle = sanitizeTaskTitle(newTask.title);
+        const sanitizedDescription = sanitizeTaskDescription(newTask.description);
+        
         const { error } = await supabase.from('tasks').insert({
-            title: newTask.title,
-            description: newTask.description,
+            title: sanitizedTitle,
+            description: sanitizedDescription,
             assigned_to: newTask.assigned_to, 
             due_date: newTask.due_date,
             priority: newTask.priority,
@@ -121,7 +127,7 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
         });
         if (error) alert('Error: ' + error.message);
         else {
-            newTask.assigned_to.forEach(async (userId) => await createNotification(userId, `New Task: ${newTask.title}`));
+            newTask.assigned_to.forEach(async (userId) => await createNotification(userId, `New Task: ${sanitizedTitle}`));
             alert('Task assigned successfully.');
             setNewTask({ title: '', description: '', assigned_to: [], due_date: '', priority: 'Normal' });
             setIsModalOpen(false);
@@ -194,6 +200,33 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
         fetchTasks();
     };
 
+    const handleRejectTask = async (taskId) => {
+        const feedback = prompt("Reason for revision:");
+        
+        // Validate that feedback was provided
+        if (feedback === null) return; // User cancelled
+        
+        const validation = validateRequired(feedback, 'Feedback');
+        if (!validation.isValid) {
+            alert(validation.error);
+            return;
+        }
+
+        // Sanitize the feedback before storing
+        const sanitizedFeedback = sanitizeFeedback(feedback);
+        
+        const { error } = await supabase
+            .from('tasks')
+            .update({ status: 'Revision Needed', feedback: sanitizedFeedback })
+            .eq('id', taskId);
+        
+        if (error) {
+            alert('Error: ' + error.message);
+        } else {
+            fetchTasks();
+        }
+    };
+
     const handleViewSubmission = async (path) => {
         const { data } = await supabase.storage.from('task_submission').createSignedUrl(path, 60);
         if (data) window.open(data.signedUrl, '_blank');
@@ -239,7 +272,7 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
                     {userProfile.role === 'supervisor' && task.status === 'Completed' && (
                         <>
                             <button onClick={() => handleStatusChange(task.id, 'Approved')} className="text-green-600 hover:text-green-800 font-bold bg-green-50 px-2 py-1 rounded">Approve</button>
-                            <button onClick={() => { const fb = prompt("Reason for revision:"); supabase.from('tasks').update({ status: 'Revision Needed', feedback: fb }).eq('id', task.id).then(fetchTasks); }} className="text-red-600 hover:text-red-800 bg-red-50 px-2 py-1 rounded">Reject</button>
+                            <button onClick={() => handleRejectTask(task.id)} className="text-red-600 hover:text-red-800 bg-red-50 px-2 py-1 rounded">Reject</button>
                         </>
                     )}
                 </div>

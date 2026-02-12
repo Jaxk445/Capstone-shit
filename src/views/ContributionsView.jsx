@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { sanitizeContribution } from '../utils/sanitizer';
 import { 
     Briefcase, 
     Send, 
@@ -35,10 +36,13 @@ const ContributionsView = ({ userProfile, contributions, allUsers, fetchContribu
         if (!newContribution.trim()) return;
         setIsSubmitting(true);
         try {
+            // Sanitize contribution before storing
+            const sanitizedContribution = sanitizeContribution(newContribution);
+            
             await supabase.from('contributions').insert({
                 employee_id: userProfile.id,
                 date: new Date().toISOString().split('T')[0],
-                contribution: newContribution,
+                contribution: sanitizedContribution,
                 category: category
             });
             setNewContribution('');

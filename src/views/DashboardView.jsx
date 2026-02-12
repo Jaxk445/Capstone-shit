@@ -11,7 +11,27 @@ const DashboardView = ({ userProfile, tasks, leaveRequests, attendance, allUsers
     // --- 1. CONFIGURABLE WIDGET STATE ---
     const [widgets, setWidgets] = useState(() => {
         const saved = localStorage.getItem('dashboard_widgets');
-        return saved ? JSON.parse(saved) : {
+        if (!saved) {
+            return {
+                metrics: true,
+                attendanceChart: true,
+                taskChart: true,
+                recentReviews: true
+            };
+        }
+        
+        try {
+            const parsed = JSON.parse(saved);
+            // Validate that parsed data has the expected structure
+            if (typeof parsed === 'object' && parsed !== null) {
+                return parsed;
+            }
+        } catch (error) {
+            console.error('Error parsing stored widgets:', error);
+        }
+        
+        // Return defaults if parsing failed
+        return {
             metrics: true,
             attendanceChart: true,
             taskChart: true,
