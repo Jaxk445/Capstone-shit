@@ -280,4 +280,4 @@ For issues, bugs, or questions, please create an issue in the repository.
 ---
 
 **Last Updated**: February 2026
-**Version**: 0.0.0
+**Version**: 1.0.0
