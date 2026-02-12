@@ -15,9 +15,25 @@ const SettingsView = ({ userProfile, fetchProfile }) => {
             }
 
             const file = event.target.files[0];
-            // Create a unique path: user_id/timestamp.jpg
+            
+            // Validate file type (only images)
+            const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+            if (!validTypes.includes(file.type)) {
+                alert('Only image files (JPG, PNG, WebP, GIF) are allowed.');
+                return;
+            }
+            
+            // Validate file size (max 5MB)
+            const maxSize = 5 * 1024 * 1024; // 5MB
+            if (file.size > maxSize) {
+                alert('File size must be less than 5MB.');
+                return;
+            }
+            
+            // Create a unique path with random ID
             const fileExt = file.name.split('.').pop();
-            const filePath = `${userProfile.id}/${Date.now()}.${fileExt}`;
+            const randomId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            const filePath = `${userProfile.id}/${randomId}.${fileExt}`;
 
             // 1. Upload to Supabase Storage
             const { error: uploadError } = await supabase.storage
@@ -41,7 +57,7 @@ const SettingsView = ({ userProfile, fetchProfile }) => {
             fetchProfile(); // Refresh the app to show new image
         } catch (error) {
             console.error("Upload error:", error);
-            alert('Error uploading image: ' + error.message);
+            alert('Error uploading image. Please try again.');
         } finally {
             setUploading(false);
         }
@@ -53,15 +69,18 @@ const SettingsView = ({ userProfile, fetchProfile }) => {
             alert("Passwords do not match.");
             return;
         }
-        if (password.length < 6) {
-            alert("Password must be at least 6 characters.");
+        
+        // Enhanced password validation: minimum 8 characters, at least one uppercase, one lowercase, one number
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+        if (!passwordRegex.test(password)) {
+            alert("Password must be at least 8 characters long and contain uppercase, lowercase, and numbers.");
             return;
         }
 
         const { error } = await supabase.auth.updateUser({ password: password });
 
         if (error) {
-            alert("Error updating password: " + error.message);
+            alert("Error updating password. Please ensure you're using a strong password.");
         } else {
             alert("Password updated successfully!");
             setPassword('');

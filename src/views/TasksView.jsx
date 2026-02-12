@@ -170,26 +170,37 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
         // 1. Double check permission (Security)
         const currentTask = tasks.find(t => t.id === taskId);
         if (!currentTask?.assigned_to?.includes(userProfile.id)) {
-            alert("⚠️ Access Denied: This task is not assigned to you.");
+            alert("Access Denied: This task is not assigned to you.");
             return;
         }
 
         const file = selectedFiles[taskId];
         if (!file) return;
 
+        // 2. Validate file type and size
+        const maxSize = 50 * 1024 * 1024; // 50MB limit for task submissions
+        if (file.size > maxSize) {
+            alert('File size must be less than 50MB.');
+            return;
+        }
+
         setUploading(taskId);
-        const filePath = `${userProfile.id}/${taskId}/${Date.now()}.${file.name.split('.').pop()}`;
+        
+        // Use random ID instead of timestamp for file path
+        const randomId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${userProfile.id}/${taskId}/${randomId}.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage.from('task_submission').upload(filePath, file);
         if (uploadError) { 
-            alert('Upload Error: ' + uploadError.message); 
+            alert('Upload failed. Please try again.'); 
             setUploading(null); 
             return; 
         }
         
         const { error: dbError } = await supabase.from('tasks').update({ submitted_file_path: filePath, status: 'Completed', feedback: null }).eq('id', taskId);
         
-        if (dbError) alert('Database Error: ' + dbError.message);
+        if (dbError) alert('Upload completed but database update failed. Please refresh.');
         else fetchTasks();
         
         setUploading(null);

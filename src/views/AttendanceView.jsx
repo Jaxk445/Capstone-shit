@@ -6,6 +6,10 @@ const AttendanceView = ({ userProfile, attendance, allUsers, fetchAttendance }) 
     const [isLoading, setIsLoading] = useState(false);
     const [liveDistance, setLiveDistance] = useState(null); 
     const [isInRange, setIsInRange] = useState(false);
+    const [locationConsentGiven, setLocationConsentGiven] = useState(() => {
+        // Check if user has previously consented to location storage
+        return localStorage.getItem(`location_consent_${userProfile.id}`) === 'true';
+    });
     
     // NEW: Store the actual coordinates here so we don't have to fetch them again
     const [currentCoords, setCurrentCoords] = useState(null); 
@@ -80,6 +84,17 @@ const AttendanceView = ({ userProfile, attendance, allUsers, fetchAttendance }) 
 
     // --- HANDLERS ---
     
+    // Request location consent
+    const handleLocationConsent = () => {
+        setLocationConsentGiven(true);
+        localStorage.setItem(`location_consent_${userProfile.id}`, 'true');
+    };
+
+    const handleRevokeLocationConsent = () => {
+        setLocationConsentGiven(false);
+        localStorage.removeItem(`location_consent_${userProfile.id}`);
+    };
+    
     // OPTIMIZED CLOCK IN (Uses cached location if available)
     const handleClockIn = async () => {
         // Validation
@@ -92,6 +107,7 @@ const AttendanceView = ({ userProfile, attendance, allUsers, fetchAttendance }) 
         const time = now.toLocaleTimeString('en-GB', { hour12: false });
         const status = time > WORK_START_TIME ? 'Late' : 'Present';
 
+        // Only store location if user has given consent
         const { error } = await supabase.from('attendance').insert({
             employee_id: userProfile.id,
             date: today,
@@ -147,6 +163,26 @@ const AttendanceView = ({ userProfile, attendance, allUsers, fetchAttendance }) 
 
     return (
         <div className="p-8 max-w-7xl mx-auto">
+            {/* --- LOCATION CONSENT NOTICE --- */}
+            {!locationConsentGiven && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 dark:bg-blue-900/30 dark:border-blue-800">
+                    <p className="text-blue-900 dark:text-blue-100 text-sm mb-3">
+                        This application uses GPS location data to verify you're at the office during clock-in. Your location is stored for attendance records.
+                    </p>
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={handleLocationConsent}
+                            className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700"
+                        >
+                            I Agree
+                        </button>
+                        <span className="text-sm text-blue-800 dark:text-blue-200 self-center">
+                            You can withdraw consent anytime in settings.
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* --- HEADER --- */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
