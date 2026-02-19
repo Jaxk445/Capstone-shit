@@ -1,9 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// Initialize Gemini
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = API_KEY ? new GoogleGenerativeAI(API_KEY) : null;
+import { sanitizeText, sanitizeTaskTitle } from '../utils/sanitizer.js';
 
 const ChatBot = ({ userProfile, tasks = [] }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -26,10 +22,11 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
         ).length;
 
         if (messages.length <= 1) {
+            const safeName = sanitizeText(userProfile.name || '').split(' ')[0] || 'there';
             setMessages([
                 { 
                     role: 'model', 
-                    text: `Hi ${userProfile.name.split(' ')[0]}! I see you have ${myActiveCount} active tasks. How can I help you today?` 
+                    text: `Hi ${safeName}! I see you have ${myActiveCount} active tasks. How can I help you today?` 
                 }
             ]);
         }
@@ -41,12 +38,9 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
 
     const handleSend = async () => {
         if (!input.trim()) return;
-        if (!genAI) {
-            setMessages(prev => [...prev, { role: 'model', text: "Error: API Key missing." }]);
-            return;
-        }
 
-        const userMessage = { role: 'user', text: input };
+        const cleanInput = sanitizeText(input);
+        const userMessage = { role: 'user', text: cleanInput };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
         setIsLoading(true);
@@ -59,37 +53,25 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
             );
             
             const taskContext = myTasks.length > 0 
-                ? myTasks.map(t => `- Task: "${t.title}" (Status: ${t.status}, Priority: ${t.priority}, Due: ${t.due_date})`).join('\n')
+                ? myTasks.map(t => `- Task: "${sanitizeTaskTitle(t.title)}" (Status: ${sanitizeText(t.status)}, Priority: ${sanitizeText(t.priority)}, Due: ${sanitizeText(t.due_date)})`).join('\n')
                 : "NO ACTIVE TASKS ASSIGNED.";
 
-            // --- UPDATED PROMPT LOGIC ---
-            const systemPrompt = `
-                You are a smart AI assistant for a Customs and Excise Employee named ${userProfile.name}.
-                
-                CURRENT ACTIVE WORKLOAD:
-                ${taskContext}
+            const safeName = sanitizeText(userProfile.name || '').split(' ')[0] || 'Employee';
+            const systemPrompt = `You are a smart AI assistant for a Customs and Excise employee named ${safeName}.\n\nCURRENT ACTIVE WORKLOAD:\n${taskContext}\n\nBe helpful, proactive, and professional.`;
 
-                INSTRUCTIONS:
-                1. If the user asks about their specific tasks, use the list above.
-                2. If the list is EMPTY (or they ask for general suggestions), suggest professional tasks relevant to a Customs Officer.
-                   Examples: Reviewing Standard Operating Procedures (SOPs), Analyzing Import/Export Data, Compliance Audits, or Staff Training.
-                3. Be helpful, proactive, and professional.
-            `;
-
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-            
-            const chat = model.startChat({
-                history: [
-                    { role: "user", parts: [{ text: systemPrompt }] },
-                    { role: "model", parts: [{ text: "Understood. I will help with specific tasks or provide general customs-related suggestions if needed." }] },
-                ],
+            // Send to server proxy which holds the LLM API key
+            const resp = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ input: cleanInput, systemPrompt })
             });
 
-            const result = await chat.sendMessage(input);
-            const response = await result.response;
-            const text = response.text();
+            if (!resp.ok) throw new Error('AI server error');
+            const data = await resp.json();
+            const text = (data && (data.text || data.reply)) || 'No response from assistant.';
 
-            setMessages(prev => [...prev, { role: 'model', text: text }]);
+            setMessages(prev => [...prev, { role: 'model', text }]);
 
         } catch (error) {
             console.error("AI Error:", error);

@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
       `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com 'unsafe-hashes'`,
       `font-src 'self' https://fonts.gstatic.com data:`,
       `img-src 'self' data: https:`,
-      `connect-src 'self' https://*.supabase.co`,
+      `connect-src 'self' https://jwswrbjamdnwikwnsnjw.supabase.co`,
       `frame-ancestors 'none'`,
       `base-uri 'self'`,
       `form-action 'self'`
