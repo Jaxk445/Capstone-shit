@@ -7,51 +7,86 @@ import {
     Filter, 
     Calendar, 
     User, 
-    AlertCircle, 
-    CheckCircle2, 
-    Zap, 
-    Clock 
 } from 'lucide-react'; // Assuming you have lucide-react, if not, remove icons or use text
+
+const CATEGORIES = [
+    { name: 'General', color: 'bg-gray-100 text-gray-700 border-gray-200', active: 'bg-gray-800 text-white border-gray-800' },
+    { name: 'Innovation', color: 'bg-purple-50 text-purple-700 border-purple-200', active: 'bg-purple-600 text-white border-purple-600' },
+    { name: 'Bug Fix', color: 'bg-red-50 text-red-700 border-red-200', active: 'bg-red-600 text-white border-red-600' },
+    { name: 'Client Help', color: 'bg-blue-50 text-blue-700 border-blue-200', active: 'bg-blue-600 text-white border-blue-600' },
+    { name: 'Overtime', color: 'bg-amber-50 text-amber-700 border-amber-200', active: 'bg-amber-600 text-white border-amber-600' },
+];
 
 const ContributionsView = ({ userProfile, contributions, allUsers, fetchContributions }) => {
     const [newContribution, setNewContribution] = useState('');
     const [category, setCategory] = useState('General');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState('');
+    const [submitSuccess, setSubmitSuccess] = useState(false);
     
     // Filters
     const [selectedEmployee, setSelectedEmployee] = useState('all');
     const [selectedDate, setSelectedDate] = useState('');
-
-    const CATEGORIES = [
-        { name: 'General', color: 'bg-gray-100 text-gray-700 border-gray-200', active: 'bg-gray-800 text-white border-gray-800' },
-        { name: 'Innovation', color: 'bg-purple-50 text-purple-700 border-purple-200', active: 'bg-purple-600 text-white border-purple-600' },
-        { name: 'Bug Fix', color: 'bg-red-50 text-red-700 border-red-200', active: 'bg-red-600 text-white border-red-600' },
-        { name: 'Client Help', color: 'bg-blue-50 text-blue-700 border-blue-200', active: 'bg-blue-600 text-white border-blue-600' },
-        { name: 'Overtime', color: 'bg-amber-50 text-amber-700 border-amber-200', active: 'bg-amber-600 text-white border-amber-600' },
-    ];
     
+    const VALID_CATEGORY_NAMES = CATEGORIES.map(c => c.name);
+
     const usersForFilter = allUsers.sort((a, b) => a.name.localeCompare(b.name));
 
     const handleSubmit = async () => {
-        if (!newContribution.trim()) return;
+        setSubmitError('');
+        setSubmitSuccess(false);
+
+        const sanitized = sanitizeContribution(newContribution);
+
+        if (!sanitized.trim()) {
+            setSubmitError('Please enter a valid activity description.');
+            return;
+        }
+
+        if (!VALID_CATEGORY_NAMES.includes(category)) {
+            setSubmitError('Invalid category selected.');
+            return;
+        }
+
+        // Max Length Check (5000 chars)
+        if (sanitized.length > 5000) {
+            setSubmitError('Description is too long (max 5000 characters).');
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            // Sanitize contribution before storing
-            const sanitizedContribution = sanitizeContribution(newContribution);
-            
-            await supabase.from('contributions').insert({
+            const { error } = await supabase.from('contributions').insert({
+                // employee_id comes from userProfile (derived from JWT), NOT from user input
                 employee_id: userProfile.id,
+                // date assigned here, not user-supplied
                 date: new Date().toISOString().split('T')[0],
-                contribution: sanitizedContribution,
-                category: category
+                contribution: sanitized,
+                category: category,
             });
+
+            if (error) {
+                // Handle DB-level constraint violations gracefully
+                if (error.code === '23514') {
+                    setSubmitError('Invalid input. Please check your entry and try again.');
+                } else {
+                    setSubmitError('Something went wrong. Please try again.');
+                }
+                console.error('Supabase insert error:', error);
+                return;
+            }
+
             setNewContribution('');
+            setSubmitSuccess(true);
+            setTimeout(() => setSubmitSuccess(false), 3000);
             fetchContributions();
-        } catch (error) {
-            console.error("Error logging:", error);
+        } catch (err) {
+            setSubmitError('Something went wrong. Please try again.');
+            console.error('Unexpected error:', err);
         } finally {
             setIsSubmitting(false);
         }
+
     };
 
     const getUserName = (id) => allUsers.find(u => u.id === id)?.name || 'Unknown';

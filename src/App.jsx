@@ -153,7 +153,7 @@ export default function App() {
     else console.error('Error fetching reviews:', error);
   };
 
-  const fetchNotifications = async (profile) => {
+  const fetchNotifications = async (profile) => {                                     
     if (!profile) return;
     const { data, error } = await supabase
       .from('notifications')

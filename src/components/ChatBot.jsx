@@ -36,8 +36,61 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isOpen]);
 
+    // --- Client-side rate limiter (localStorage-backed) ---
+    const RATE_LIMIT_KEY = 'chatbot_rate_attempts';
+    const RATE_LIMIT_MAX = 5; // max attempts
+    const RATE_LIMIT_WINDOW_MS = 60 * 1000; // window in ms
+
+    const loadAttempts = () => {
+        try {
+            const raw = localStorage.getItem(RATE_LIMIT_KEY);
+            if (!raw) return [];
+            const arr = JSON.parse(raw);
+            return Array.isArray(arr) ? arr.map(Number).filter(Boolean) : [];
+        } catch (e) {
+            return [];
+        }
+    };
+
+    const saveAttempts = (arr) => {
+        try { localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(arr)); } catch (e) {}
+    };
+
+    const cleanupAttempts = () => {
+        const now = Date.now();
+        const arr = loadAttempts().filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+        saveAttempts(arr);
+        return arr;
+    };
+
+    const isAllowed = () => cleanupAttempts().length < RATE_LIMIT_MAX;
+
+    const recordAttempt = () => {
+        const now = Date.now();
+        const arr = cleanupAttempts();
+        arr.push(now);
+        saveAttempts(arr);
+        return arr;
+    };
+
+    const getRetryAfterSeconds = () => {
+        const arr = cleanupAttempts();
+        if (arr.length < RATE_LIMIT_MAX) return 0;
+        const now = Date.now();
+        const oldest = arr[0] || now;
+        const waitMs = RATE_LIMIT_WINDOW_MS - (now - oldest);
+        return Math.max(1, Math.ceil(waitMs / 1000));
+    };
+
     const handleSend = async () => {
         if (!input.trim()) return;
+
+        // Client-side rate limit check
+        if (!isAllowed()) {
+            const wait = getRetryAfterSeconds();
+            setMessages(prev => [...prev, { role: 'model', text: `Rate limit exceeded. Please wait ${wait} seconds before trying again.` }]);
+            return;
+        }
 
         const cleanInput = sanitizeText(input);
         const userMessage = { role: 'user', text: cleanInput };
@@ -59,7 +112,8 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
             const safeName = sanitizeText(userProfile.name || '').split(' ')[0] || 'Employee';
             const systemPrompt = `You are a smart AI assistant for a Customs and Excise employee named ${safeName}.\n\nCURRENT ACTIVE WORKLOAD:\n${taskContext}\n\nBe helpful, proactive, and professional.`;
 
-            // Send to server proxy which holds the LLM API key
+            // Record attempt and send to server proxy which holds the LLM API key
+            recordAttempt();
             const resp = await fetch('/api/ai/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
