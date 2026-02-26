@@ -4,7 +4,8 @@ const crypto = require('crypto');
 
 module.exports = async (req, res) => {
   try {
-    const indexPath = path.join(__dirname, '..', 'index.html');
+    // index.html is now located inside the frontend folder
+    const indexPath = path.join(__dirname, '..', 'frontend', 'index.html');
     let html = fs.readFileSync(indexPath, 'utf8');
 
     // Generate a per-request nonce (base64)

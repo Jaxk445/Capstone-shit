@@ -1,45 +1,135 @@
-# Repository Overview
+# Employee Dashboard - DJBC Capstone Project (Frontend)
 
-This project has been reorganized into a simple monorepo with separate
-frontend and backend components.  Each piece lives in its own top‑level
-folder:
+This directory contains the React + Vite application that powers the employee
+tracker dashboard. It is the client-side portion of the system and is
+configured with Tailwind CSS, Supabase client, and Google Generative AI.
 
-- `frontend/` – React/Vite application, original codebase moved here.  See
-  `frontend/README.md` for full setup, feature list and development
-  instructions.
-- `backend/` – Node‑based server and any API/serverless functions.  A
-  minimal Express starter and the former `api/render.js` are located here.
-
-
-## Getting Started
-
-```bash
-git clone <repository-url>
-cd Capstone-shit
-```
-
-To work on the frontend:
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-To work on the backend:
-```bash
-cd backend
-npm install
-npm start
-```
-
-The front end assumes Supabase credentials in `frontend/.env`; the backend
-can be extended with its own `.env` as needed.
+The following documentation was migrated from the repository root when the
+project was split into separate frontend and backend directories.  For
+backend-specific notes see `../backend`.
 
 ---
 
-For detailed documentation, feature descriptions, and deployment notes, open
-`frontend/README.md`.
+# Employee Dashboard - DJBC Capstone Project
 
+A comprehensive employee management and monitoring system for the Directorate General of Customs and Excise (DJBC). This web application tracks employee activities, tasks, attendance, leave requests, and performance reviews in real-time.
+
+## Overview
+
+This is a full-featured HR and operations dashboard built with React, Vite, and Supabase. The system supports both supervisor and employee roles with role-based access control. Features include GPS-based attendance tracking, real-time task management, and an AI-powered chatbot assistant.
+
+## Features
+
+### Dashboard
+- Real-time metrics and performance analytics
+- Attendance trends visualization
+- Task completion charts
+- Leave management overview
+- Recent performance reviews
+- Customizable widgets with local storage persistence
+- Dark mode support
+
+### Attendance Management
+- GPS-based clock in and out system
+- Location verification within 100 meters of office
+- Real-time distance tracking
+- Attendance history and statistics
+- Export attendance records to CSV and Excel formats
+- Supervisor view of team attendance
+
+### Task Management
+- Kanban board with drag-and-drop functionality
+- Timeline view for tracking deadlines
+- Task creation and assignment
+- Three priority levels: Low, Normal, High
+- Task status tracking: To Do, In Progress, Ready for Review, Approved, Revision Needed
+- File upload capability for task submissions
+- Real-time notification system
+
+### Leave Management
+- Submit leave requests for date ranges
+- Supervisor approval workflow
+- Leave history and balance tracking
+- Integration with attendance system
+- Real-time notifications for approvals
+
+### Performance Reviews
+- Supervisor-assigned performance evaluations
+- Multi-criteria scoring system: Quality, Discipline, and Teamwork
+- Historical review tracking
+- Automatic average score calculations
+- Employee access to their own reviews
+
+### Activity Logs
+- Daily contribution tracking
+- Activity categorization: Bug Fix, Feature, Documentation, Testing, Deployment
+- Supervisor view of team activities
+- Date range filtering capability
+
+### AI Chatbot Assistant
+- Google Generative AI (Gemini) powered assistant
+- Context-aware responses using employee data
+- Task insights and recommendations
+- In-app chat interface
+
+### Security Features
+- Content Security Policy (CSP) headers
+- Secure authentication with Supabase
+- Role-based access control
+- Input sanitization with DOMPurify
+- HTTPS and HSTS enforcement
+- X-Frame-Options and XSS protection
+
+## Technology Stack
+
+- **Frontend**: React 19.1.1, Vite 5
+- **Styling**: Tailwind CSS 3
+- **Backend**: Supabase with PostgreSQL
+- **Real-time Updates**: Supabase Realtime subscriptions
+- **Charts**: Recharts 3.3.0
+- **Maps**: Leaflet 1.9.4 with React-Leaflet 5.0.0
+- **Artificial Intelligence**: Google Generative AI SDK
+- **UI Icons**: Lucide React
+- **Notifications**: React Hot Toast
+- **Hosting**: Vercel
+
+## Installation
+
+### Requirements
+- Node.js version 16 or higher
+- npm or yarn package manager
+- Supabase account
+- Google Generative AI API key for the chatbot feature
+
+### Setup Instructions
+
+1. Clone the repository
+```bash
+git clone <repository-url>
+cd Capstone-shit/frontend
+```
+
+2. Install dependencies
+```bash
+npm install
+```
+
+3. Configure environment variables
+Create a `.env` file in the frontend directory with the following variables:
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_GEMINI_API_KEY=your_google_generative_ai_api_key
+```
+
+4. Start the development server
+```bash
+npm run dev
+```
+
+The application will run at `http://localhost:5173`
+
+## Building and Deployment
 
 ### Production Build
 ```bash
@@ -105,7 +195,7 @@ const ALLOWED_RADIUS_METERS = 100;
 ```
 
 ### Work Hours Configuration
-```javascript
+```bash
 const WORK_START_TIME = '08:00:00';
 ```
 
