@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { sanitizeContribution } from '../utils/sanitizer';
+import { sanitizeContribution, sanitizeText } from '../utils/sanitizer';
 import { 
     Briefcase, 
     Send, 
@@ -29,8 +29,9 @@ const ContributionsView = ({ userProfile, contributions, allUsers, fetchContribu
     const [selectedDate, setSelectedDate] = useState('');
     
     const VALID_CATEGORY_NAMES = CATEGORIES.map(c => c.name);
+    const toSafeText = (value) => sanitizeText(String(value || ''));
 
-    const usersForFilter = allUsers.sort((a, b) => a.name.localeCompare(b.name));
+    const usersForFilter = allUsers.sort((a, b) => toSafeText(a.name).localeCompare(toSafeText(b.name)));
 
     const handleSubmit = async () => {
         setSubmitError('');
@@ -89,7 +90,7 @@ const ContributionsView = ({ userProfile, contributions, allUsers, fetchContribu
 
     };
 
-    const getUserName = (id) => allUsers.find(u => u.id === id)?.name || 'Unknown';
+    const getUserName = (id) => toSafeText(allUsers.find(u => u.id === id)?.name || 'Unknown');
 
     const filteredContributions = contributions.filter(item => {
         const matchEmployee = selectedEmployee === 'all' || item.employee_id === selectedEmployee;
@@ -128,7 +129,7 @@ const ContributionsView = ({ userProfile, contributions, allUsers, fetchContribu
                                     className="pl-7 pr-8 py-1.5 w-32 md:w-40 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                 >
                                     <option value="all">All Staff</option>
-                                    {usersForFilter.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                    {usersForFilter.map(u => <option key={u.id} value={u.id}>{toSafeText(u.name)}</option>)}
                                 </select>
                             </div>
                         </div>
@@ -167,7 +168,7 @@ const ContributionsView = ({ userProfile, contributions, allUsers, fetchContribu
                     <div className="flex flex-col gap-4">
                         <textarea 
                             value={newContribution} 
-                            onChange={(e) => setNewContribution(e.target.value)}
+                            onChange={(e) => setNewContribution(sanitizeText(e.target.value).slice(0, 5000))}
                             className="w-full p-4 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none dark:bg-gray-700/50 dark:border-gray-600 dark:text-white dark:focus:bg-gray-700"
                             placeholder="What did you work on today?"
                             rows="3"
@@ -246,11 +247,11 @@ const ContributionsView = ({ userProfile, contributions, allUsers, fetchContribu
                                             <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium border ${
                                                 CATEGORIES.find(c => c.name === item.category)?.color || 'bg-gray-100 text-gray-600 border-gray-200'
                                             }`}>
-                                                {item.category}
+                                                {toSafeText(item.category)}
                                             </span>
                                         </td>
                                         <td className="p-4 text-sm text-gray-600 dark:text-gray-300 leading-relaxed group-hover:text-gray-900 dark:group-hover:text-white">
-                                            {item.contribution}
+                                            {toSafeText(item.contribution)}
                                         </td>
                                     </tr>
                                 ))

@@ -2,26 +2,27 @@ import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import Modal from '../components/Modal';
 import ExportButton from '../components/ExportButton';
-import { sanitizeFeedback, sanitizeTaskTitle, sanitizeTaskDescription, validateRequired } from '../utils/sanitizer';
+import { sanitizeFeedback, sanitizeTaskTitle, sanitizeTaskDescription, sanitizeText, validateRequired } from '../utils/sanitizer';
 
 // --- HELPER: USER AVATAR ---
 const UserAvatar = ({ user, size = "w-6 h-6", textSize = "text-[9px]" }) => {
     if (!user) return null;
+    const safeName = sanitizeText(String(user.name || 'Unknown'));
 
     if (user.avatar_url) {
         return (
             <img
                 src={user.avatar_url}
-                alt={user.name}
-                title={user.name}
+                alt={safeName}
+                title={safeName}
                 className={`${size} rounded-full border border-white object-cover shadow-sm dark:border-gray-800`}
             />
         );
     }
 
     return (
-         <div title={user.name} className={`${size} rounded-full bg-gray-200 border border-white flex items-center justify-center ${textSize} font-bold text-gray-600 shadow-sm dark:border-gray-800 dark:bg-gray-700 dark:text-gray-300`}>
-            {user.name?.charAt(0) || '?'}
+         <div title={safeName} className={`${size} rounded-full bg-gray-200 border border-white flex items-center justify-center ${textSize} font-bold text-gray-600 shadow-sm dark:border-gray-800 dark:bg-gray-700 dark:text-gray-300`}>
+            {safeName.charAt(0) || '?'}
         </div>
     );
 };
@@ -49,6 +50,7 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
     const [uploading, setUploading] = useState(null); 
 
     const employeeUsers = (allUsers || []).filter(u => u.role === 'employee');
+    const toSafeText = (value) => sanitizeText(String(value || ''));
 
     // --- CONFIGURATION ---
     const COLUMNS = [
@@ -85,13 +87,13 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
     };
 
     const exportData = (tasks || []).map(t => ({
-        Task: t.title,
-        Description: t.description,
+        Task: toSafeText(t.title),
+        Description: toSafeText(t.description),
         Priority: t.priority,
         Status: t.status,
         "Due Date": t.due_date,
         "Assigned To": getAssigneeNames(t.assigned_to),
-        Feedback: t.feedback || 'None'
+        Feedback: toSafeText(t.feedback) || 'None'
     }));
 
     // --- TIMELINE HELPERS ---
@@ -251,9 +253,9 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
                 {task.status === 'Revision Needed' && <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-1 rounded border border-red-200">Needs Fix</span>}
             </div>
             <div>
-                <h4 className="font-bold text-gray-800 text-sm mb-1 dark:text-gray-100">{task.title}</h4>
+                <h4 className="font-bold text-gray-800 text-sm mb-1 dark:text-gray-100">{toSafeText(task.title)}</h4>
                 <div className="text-xs text-gray-500 flex items-center gap-1 dark:text-gray-400"><span>📅 Due: {task.due_date}</span></div>
-                {task.feedback && task.status === 'Revision Needed' && <div className="mt-2 text-xs bg-red-50 text-red-600 p-2 rounded border border-red-100 italic">"Supervisor: {task.feedback}"</div>}
+                {task.feedback && task.status === 'Revision Needed' && <div className="mt-2 text-xs bg-red-50 text-red-600 p-2 rounded border border-red-100 italic">"Supervisor: {toSafeText(task.feedback)}"</div>}
             </div>
             <div className="mt-auto pt-3 border-t border-gray-100 flex justify-between items-center dark:border-gray-700">
                 {/* AVATARS */}
@@ -314,7 +316,7 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
                     <div className="flex -space-x-2">
                         {empTasks.slice(0, 3).map(t => (
                             <div key={t.id} className="w-5 h-5 rounded-full bg-gray-200 border border-white text-[8px] flex items-center justify-center dark:border-gray-800" title={t.title}>
-                                {t.title.charAt(0)}
+                                {toSafeText(t.title).charAt(0)}
                             </div>
                         ))}
                         {empTasks.length > 3 && <div className="w-5 h-5 rounded-full bg-gray-100 border border-white text-[8px] flex items-center justify-center text-gray-500 dark:border-gray-800">+{empTasks.length-3}</div>}
@@ -354,7 +356,7 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
                 <div className="space-y-4">
                     <div>
                         <label className="text-xs font-bold text-gray-700 uppercase dark:text-gray-200">Title</label>
-                        <input type="text" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} className="w-full p-2 border border-gray-300 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
+                        <input type="text" value={newTask.title} onChange={e => setNewTask({...newTask, title: sanitizeTaskTitle(e.target.value)})} className="w-full p-2 border border-gray-300 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -376,7 +378,7 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
                             {employeeUsers.map(emp => (
                                 <label key={emp.id} className="flex items-center space-x-2 p-1 hover:bg-gray-200 rounded cursor-pointer dark:hover:bg-gray-600">
                                     <input type="checkbox" checked={newTask.assigned_to.includes(emp.id)} onChange={() => toggleAssignee(emp.id)} />
-                                    <span className="text-sm dark:text-gray-200">{emp.name}</span>
+                                    <span className="text-sm dark:text-gray-200">{toSafeText(emp.name)}</span>
                                 </label>
                             ))}
                         </div>
@@ -419,11 +421,11 @@ const TasksView = ({ userProfile, tasks = [], allUsers = [], fetchTasks, createN
                                 <div key={emp.id} className="grid grid-cols-8 border-b border-gray-50 hover:bg-gray-50 transition-colors dark:border-gray-700 dark:hover:bg-gray-700/30">
                                     <div className="p-4 flex items-center gap-2">
                                         <UserAvatar user={emp} size="w-6 h-6" textSize="text-xs" />
-                                        <span className="text-sm font-bold text-gray-700 truncate dark:text-gray-200">{emp.name.split(' ')[0]}</span>
+                                        <span className="text-sm font-bold text-gray-700 truncate dark:text-gray-200">{toSafeText(emp.name).split(' ')[0]}</span>
                                     </div>
                                     {timelineDates.map(date => {
                                         const dailyTasks = (tasks || []).filter(t => (t.assigned_to || []).includes(emp.id) && t.due_date === date);
-                                        return (<div key={date} className="border-l border-gray-50 p-1 relative dark:border-gray-700">{dailyTasks.map(t => (<div key={t.id} className={`text-[10px] p-1.5 rounded mb-1 truncate shadow-sm font-medium ${t.status === 'Approved' ? 'bg-green-100 text-green-700' : t.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`} title={t.title}>{t.title}</div>))}</div>);
+                                        return (<div key={date} className="border-l border-gray-50 p-1 relative dark:border-gray-700">{dailyTasks.map(t => (<div key={t.id} className={`text-[10px] p-1.5 rounded mb-1 truncate shadow-sm font-medium ${t.status === 'Approved' ? 'bg-green-100 text-green-700' : t.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`} title={toSafeText(t.title)}>{toSafeText(t.title)}</div>))}</div>);
                                     })}
                                 </div>
                             ))}

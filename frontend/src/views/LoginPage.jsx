@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import LoginLogo from '../assets/customs-logo.jpg';
 import BackgroundImage from '../assets/becuk foto.jpg'; // <--- Your uploaded background
 import { createRateLimiter } from '../utils/rateLimiter'; // Rate Limiter for DoS prevention
+import { sanitizeText, validateEmail } from '../utils/sanitizer';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -38,28 +39,54 @@ const LoginPage = () => {
     setMessage('');
     setLoading(true);
 
+    const safeEmail = sanitizeText(email).trim().toLowerCase();
+    const emailValidation = validateEmail(safeEmail);
+    if (!emailValidation.isValid) {
+      setError(emailValidation.error);
+      setLoading(false);
+      return;
+    }
+
     // Rate Limiter Checker
-    if (!loginLimiter(email)) {
-      setError('Too many login attempts. Please try again in 1 minute.');
+    const limiterResult = loginLimiter.consume(safeEmail);
+    if (!limiterResult.allowed) {
+      setError(`Too many login attempts. Please try again in ${Math.ceil(limiterResult.retryAfter / 1000)} seconds.`);
       setLoading(false);
       return;
     }
 
     try {
         if (isRegisterMode) {
+            const safeName = sanitizeText(name).trim().substring(0, 100);
+            const safeInitials = sanitizeText(initials).replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 2);
+
+            if (!safeName) {
+                setError('Full name is required.');
+                setLoading(false);
+                return;
+            }
+
+            if (safeInitials.length < 2) {
+                setError('Initials must contain at least 2 letters.');
+                setLoading(false);
+                return;
+            }
+
             const { error } = await supabase.auth.signUp({
-                email,
+                email: safeEmail,
                 password,
-                options: { data: { name, initials: initials.toUpperCase() } }
+                options: { data: { name: safeName, initials: safeInitials } }
             });
             if (error) throw error;
             setMessage('Registration successful! Check your email.');
+            loginLimiter.reset(safeEmail); // Reset limiter after successful registration
         } else {
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            const { error } = await supabase.auth.signInWithPassword({ email: safeEmail, password });
             if (error) throw error;
+            loginLimiter.reset(safeEmail); // Reset limiter after successful login
         }
     } catch (err) {
-        setError(err.message);
+        setError(sanitizeText(err?.message || 'Authentication failed.'));
     } finally {
         setLoading(false);
     }
@@ -111,7 +138,7 @@ const LoginPage = () => {
                             type="text" 
                             placeholder="Perrell Brown" 
                             value={name} 
-                            onChange={(e) => setName(e.target.value)} 
+                            onChange={(e) => setName(sanitizeText(e.target.value).substring(0, 100))} 
                             required 
                         />
                     </div>
@@ -122,7 +149,7 @@ const LoginPage = () => {
                             type="text" 
                             placeholder="PB" 
                             value={initials} 
-                            onChange={(e) => setInitials(e.target.value)} 
+                            onChange={(e) => setInitials(sanitizeText(e.target.value).replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 2))} 
                             required 
                             maxLength="2" 
                         />
@@ -137,7 +164,7 @@ const LoginPage = () => {
                     type="email" 
                     placeholder="officer@customs.go.id" 
                     value={email} 
-                    onChange={(e) => setEmail(e.target.value)} 
+                    onChange={(e) => setEmail(sanitizeText(e.target.value).substring(0, 254))} 
                     required 
                 />
             </div>
