@@ -1,21 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { supabase } from './supabaseClient';
 import { Toaster, toast } from 'react-hot-toast';
 
 // --- COMPONENTS ---
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import ChatBot from './components/ChatBot';
 
 // --- VIEWS ---
-import LoginPage from './views/LoginPage';
-import DashboardView from './views/DashboardView';
-import AttendanceView from './views/AttendanceView';
-import TasksView from './views/TasksView';
-import ContributionsView from './views/ContributionsView';
-import LeaveView from './views/LeaveView';
-import PerformanceReviewView from './views/PerformanceReviewView';
-import SettingsView from './views/SettingsView';
+const ChatBot = lazy(() => import('./components/ChatBot'));
+const LoginPage = lazy(() => import('./views/LoginPage'));
+const DashboardView = lazy(() => import('./views/DashboardView'));
+const AttendanceView = lazy(() => import('./views/AttendanceView'));
+const TasksView = lazy(() => import('./views/TasksView'));
+const ContributionsView = lazy(() => import('./views/ContributionsView'));
+const LeaveView = lazy(() => import('./views/LeaveView'));
+const PerformanceReviewView = lazy(() => import('./views/PerformanceReviewView'));
+const SettingsView = lazy(() => import('./views/SettingsView'));
 
 const MainContent = ({ view, userProfile, ...props }) => {
   switch (view) {
@@ -246,6 +246,12 @@ export default function App() {
     if (error) console.error('Error marking notifications as read:', error);
   };
 
+  const loadingFallback = (
+    <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+      Loading...
+    </div>
+  );
+
   // --- RENDER LOADING / LOGIN ---
   if (session === null || (session && userProfile === null)) {
     if (session && !userProfile) {
@@ -258,7 +264,11 @@ export default function App() {
         </div>
       );
     }
-    return <LoginPage />;
+    return (
+      <Suspense fallback={loadingFallback}>
+        <LoginPage />
+      </Suspense>
+    );
   }
 
   // --- MAIN LAYOUT RENDER ---
@@ -292,27 +302,29 @@ export default function App() {
           {/* DYNAMIC VIEW */}
           <main className="flex-1 overflow-y-auto p-0 relative">
             {userProfile && (
-              <>
-                <MainContent
-                  view={activeView}
-                  userProfile={userProfile}
-                  allUsers={allUsers}
-                  tasks={tasks}
-                  fetchTasks={() => fetchTasks(userProfile)}
-                  attendance={attendance}
-                  fetchAttendance={() => fetchAttendance(userProfile)}
-                  leaveRequests={leaveRequests}
-                  fetchLeaveRequests={() => fetchLeaveRequests(userProfile)}
-                  contributions={contributions}
-                  fetchContributions={() => fetchContributions(userProfile)}
-                  fetchProfile={() => fetchProfile(userProfile.id)}
-                  createNotification={createNotification}
-                  reviews={reviews}
-                />
-                
-                {/* ChatBot Floating Button */}
-                <ChatBot userProfile={userProfile} tasks={tasks} />
-              </>
+              <Suspense fallback={loadingFallback}>
+                <>
+                  <MainContent
+                    view={activeView}
+                    userProfile={userProfile}
+                    allUsers={allUsers}
+                    tasks={tasks}
+                    fetchTasks={() => fetchTasks(userProfile)}
+                    attendance={attendance}
+                    fetchAttendance={() => fetchAttendance(userProfile)}
+                    leaveRequests={leaveRequests}
+                    fetchLeaveRequests={() => fetchLeaveRequests(userProfile)}
+                    contributions={contributions}
+                    fetchContributions={() => fetchContributions(userProfile)}
+                    fetchProfile={() => fetchProfile(userProfile.id)}
+                    createNotification={createNotification}
+                    reviews={reviews}
+                  />
+                  
+                  {/* ChatBot Floating Button */}
+                  <ChatBot userProfile={userProfile} tasks={tasks} />
+                </>
+              </Suspense>
             )}
           </main>
       </div>
