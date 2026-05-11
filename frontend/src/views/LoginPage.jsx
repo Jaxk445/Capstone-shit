@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
 import LoginLogo from '../assets/customs-logo.jpg';
 import BackgroundImage from '../assets/becuk foto.jpg'; // <--- Your uploaded background
-import { createRateLimiter } from '../utils/rateLimiter'; // Rate Limiter for DoS prevention
 import { sanitizeText, validateEmail } from '../utils/sanitizer';
 
 const LoginPage = () => {
@@ -17,9 +15,6 @@ const LoginPage = () => {
   
   // --- PARALLAX EFFECT STATE ---
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  // Rate Limiter Instance (5 attempts per minute)
-  const loginLimiter = createRateLimiter(5, 60000);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -47,14 +42,6 @@ const LoginPage = () => {
       return;
     }
 
-    // Rate Limiter Checker
-    const limiterResult = loginLimiter.consume(safeEmail);
-    if (!limiterResult.allowed) {
-      setError(`Too many login attempts. Please try again in ${Math.ceil(limiterResult.retryAfter / 1000)} seconds.`);
-      setLoading(false);
-      return;
-    }
-
     try {
         if (isRegisterMode) {
             const safeName = sanitizeText(name).trim().substring(0, 100);
@@ -72,18 +59,47 @@ const LoginPage = () => {
                 return;
             }
 
-            const { error } = await supabase.auth.signUp({
-                email: safeEmail,
-                password,
-                options: { data: { name: safeName, initials: safeInitials } }
+            const resp = await fetch('/api/auth/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ email: safeEmail, password, name: safeName, initials: safeInitials })
             });
-            if (error) throw error;
+
+            if (resp.status === 429) {
+                const data = await resp.json().catch(() => ({}));
+                const wait = data.retryAfter ? Math.max(1, Math.ceil(data.retryAfter / 1000)) : 60;
+                setError(`Too many registration attempts. Please try again in ${wait} seconds.`);
+                setLoading(false);
+                return;
+            }
+
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({ error: 'Registration failed' }));
+                throw new Error(data.error || 'Registration failed');
+            }
+
             setMessage('Registration successful! Check your email.');
-            loginLimiter.reset(safeEmail); // Reset limiter after successful registration
         } else {
-            const { error } = await supabase.auth.signInWithPassword({ email: safeEmail, password });
-            if (error) throw error;
-            loginLimiter.reset(safeEmail); // Reset limiter after successful login
+            const resp = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ email: safeEmail, password })
+            });
+
+            if (resp.status === 429) {
+                const data = await resp.json().catch(() => ({}));
+                const wait = data.retryAfter ? Math.max(1, Math.ceil(data.retryAfter / 1000)) : 60;
+                setError(`Too many login attempts. Please try again in ${wait} seconds.`);
+                setLoading(false);
+                return;
+            }
+
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({ error: 'Authentication failed' }));
+                throw new Error(data.error || 'Authentication failed');
+            }
         }
     } catch (err) {
         setError(sanitizeText(err?.message || 'Authentication failed.'));

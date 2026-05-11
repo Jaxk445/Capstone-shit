@@ -10,12 +10,13 @@ const AttendanceView = ({ userProfile, attendance, allUsers, fetchAttendance }) 
         // Check if user has previously consented to location storage
         return localStorage.getItem(`location_consent_${userProfile.id}`) === 'true';
     });
+    const [selectedEmployee, setSelectedEmployee] = useState(userProfile.role === 'supervisor' ? null : userProfile.id);
     
     // NEW: Store the actual coordinates here so we don't have to fetch them again
     const [currentCoords, setCurrentCoords] = useState(null); 
 
     const today = new Date().toISOString().split('T')[0];
-    const todayRecord = attendance.find(record => record.employee_id === userProfile.id && record.date === today);
+    const todayRecord = filteredAttendance.find(record => record.employee_id === userProfile.id && record.date === today);
 
     // --- CONFIGURATION ---
     const WORK_START_TIME = '08:00:00'; 
@@ -25,17 +26,23 @@ const AttendanceView = ({ userProfile, attendance, allUsers, fetchAttendance }) 
     };
     const ALLOWED_RADIUS_METERS = 100; 
 
+    // --- FILTER DATA BY SELECTED EMPLOYEE (for supervisors) ---
+    const filteredAttendance = userProfile.role === 'supervisor' && selectedEmployee
+        ? attendance.filter(a => a.employee_id === selectedEmployee)
+        : attendance.filter(a => a.employee_id === userProfile.id);
+
     // --- HERO STATS ---
-    const totalDays = attendance.length;
-    const onTimeDays = attendance.filter(a => a.status === 'Present').length;
-    const lateDays = attendance.filter(a => a.status === 'Late').length;
+    const totalDays = filteredAttendance.length;
+    const onTimeDays = filteredAttendance.filter(a => a.status === 'Present').length;
+    const lateDays = filteredAttendance.filter(a => a.status === 'Late').length;
     const punctualityScore = totalDays > 0 ? ((onTimeDays / totalDays) * 100).toFixed(0) : 0;
 
     // --- HELPERS ---
     const getUserName = (id) => allUsers.find(u => u.id === id)?.name || 'Unknown';
+    const employeeUsers = allUsers.filter(u => u.role === 'employee');
 
-    // --- EXPORT DATA PREP ---
-    const exportData = attendance.map(record => ({
+    // --- EXPORT DATA PREP (filtered by selected employee) ---
+    const exportData = filteredAttendance.map(record => ({
         Date: record.date,
         Employee: getUserName(record.employee_id),
         Status: record.status,
@@ -189,16 +196,34 @@ const AttendanceView = ({ userProfile, attendance, allUsers, fetchAttendance }) 
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">Attendance Overview</h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Track employee check-ins and location data.</p>
                 </div>
-
-                {/* EXPORT BUTTON */}
-                {userProfile.role === 'supervisor' && (
-                    <ExportButton 
-                        data={exportData} 
-                        filename="Attendance_Log" 
-                        label="Download Report" 
-                    />
-                )}
             </div>
+
+            {/* --- SUPERVISOR EMPLOYEE SELECTOR --- */}
+            {userProfile.role === 'supervisor' && (
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 mb-6 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="flex-1">
+                        <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-2 tracking-wider">View Attendance For</label>
+                        <select
+                            value={selectedEmployee || ''}
+                            onChange={(e) => setSelectedEmployee(e.target.value || null)}
+                            className="w-full md:w-64 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                        >
+                            <option value="">-- All Employees --</option>
+                            {employeeUsers.map(emp => (
+                                <option key={emp.id} value={emp.id}>{emp.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    {/* EXPORT BUTTON */}
+                    <div className="pt-2 md:pt-6">
+                        <ExportButton 
+                            data={exportData} 
+                            filename={selectedEmployee ? `Attendance_${getUserName(selectedEmployee).replace(/\s+/g, '_')}` : 'Attendance_Log'} 
+                            label="Download Report" 
+                        />
+                    </div>
+                </div>
+            )}
             
             {/* --- HERO STATS --- */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -269,7 +294,7 @@ const AttendanceView = ({ userProfile, attendance, allUsers, fetchAttendance }) 
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {attendance.map(record => (
+                            {filteredAttendance.map(record => (
                                 <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                     <td className="p-4 font-medium text-gray-700 dark:text-gray-200">{record.date}</td>
                                     {userProfile.role === 'supervisor' && <td className="p-4 text-gray-600 dark:text-gray-300">{getUserName(record.employee_id)}</td>}

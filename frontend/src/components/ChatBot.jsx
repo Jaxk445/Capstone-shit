@@ -112,8 +112,6 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
             const safeName = sanitizeText(userProfile.name || '').split(' ')[0] || 'Employee';
             const systemPrompt = `You are a smart AI assistant for a Customs and Excise employee named ${safeName}.\n\nCURRENT ACTIVE WORKLOAD:\n${taskContext}\n\nBe helpful, proactive, and professional.`;
 
-            // Record attempt and send to server proxy which holds the LLM API key
-            recordAttempt();
             const resp = await fetch('/api/ai/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -121,9 +119,17 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
                 body: JSON.stringify({ input: cleanInput, systemPrompt })
             });
 
+            if (resp.status === 429) {
+                const data = await resp.json().catch(() => ({}));
+                const wait = data.retryAfter ? Math.max(1, Math.ceil(data.retryAfter / 1000)) : getRetryAfterSeconds();
+                throw new Error(`Rate limit exceeded. Please wait ${wait} seconds before trying again.`);
+            }
+
             if (!resp.ok) throw new Error('AI server error');
             const data = await resp.json();
             const text = (data && (data.text || data.reply)) || 'No response from assistant.';
+
+            recordAttempt();
 
             setMessages(prev => [...prev, { role: 'model', text }]);
 
