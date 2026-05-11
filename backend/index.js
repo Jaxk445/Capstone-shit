@@ -1,14 +1,22 @@
-// Simple Express server for backend APIs
-// Currently this project uses Supabase as the primary backend,
-// but this folder is prepared for any Node/Express logic or serverless
-// functions you may add in the future.
+// Express server with backend APIs
+// Handles authentication and AI chat endpoints
 
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { handleLogin } from './api/auth/login.js';
+import { handleChat } from './api/ai/chat.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// API Routes
+app.post('/api/auth/login', handleLogin);
+app.post('/api/ai/chat', handleChat);
 
 // serve static frontend when running in production
 const __filename = fileURLToPath(import.meta.url);

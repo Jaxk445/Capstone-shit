@@ -3,8 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const WINDOW_MS = 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
-const attemptsByKey = globalThis.__signupAttempts || new Map();
-globalThis.__signupAttempts = attemptsByKey;
+const attemptsByKey = new Map();
 
 const getClientKey = (req) => {
   const forwardedFor = req.headers['x-forwarded-for'];
@@ -45,7 +44,7 @@ const cleanText = (value, limit) => {
   return value.trim().slice(0, limit);
 };
 
-export default async function handler(req, res) {
+export async function handleLogin(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'POST') {
@@ -58,7 +57,7 @@ export default async function handler(req, res) {
   const limiterResult = rateLimit(key);
   if (!limiterResult.allowed) {
     res.status(429).json({
-      error: 'Too many registration attempts. Please try again later.',
+      error: 'Too many login attempts. Please try again later.',
       retryAfter: limiterResult.retryAfter,
     });
     return;
@@ -84,49 +83,26 @@ export default async function handler(req, res) {
 
   const email = cleanText(payload.email, 254).toLowerCase();
   const password = cleanText(payload.password, 500);
-  const name = cleanText(payload.name, 100);
-  const initials = cleanText(payload.initials, 2).toUpperCase();
 
-  if (!email || !password || !name || !initials) {
-    res.status(400).json({ error: 'Email, password, name, and initials are required' });
-    return;
-  }
-
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    res.status(400).json({ error: 'Invalid email format' });
-    return;
-  }
-
-  if (password.length < 8) {
-    res.status(400).json({ error: 'Password must be at least 8 characters' });
-    return;
-  }
-
-  if (initials.length !== 2 || !/^[A-Z]{2}$/.test(initials)) {
-    res.status(400).json({ error: 'Initials must be exactly 2 uppercase letters' });
+  if (!email || !password) {
+    res.status(400).json({ error: 'Email and password are required' });
     return;
   }
 
   try {
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, initials },
-      },
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      res.status(400).json({ error: error.message || 'Registration failed' });
+      res.status(401).json({ error: error.message || 'Authentication failed' });
       return;
     }
 
     res.status(200).json({
+      session: data.session,
       user: data.user,
-      message: 'Registration successful. Check your email for confirmation.',
     });
   } catch (error) {
-    res.status(500).json({ error: 'Registration failed. Please try again.' });
+    res.status(500).json({ error: 'Login failed. Please try again.' });
   }
 }

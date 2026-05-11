@@ -1,10 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
-
 const WINDOW_MS = 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
-const attemptsByKey = globalThis.__loginAttempts || new Map();
-globalThis.__loginAttempts = attemptsByKey;
+const attemptsByKey = new Map();
+
+const cleanText = (value, limit) => {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, limit);
+};
 
 const getClientKey = (req) => {
   const forwardedFor = req.headers['x-forwarded-for'];
@@ -40,12 +42,7 @@ const rateLimit = (key) => {
   return { allowed: true, retryAfter: 0 };
 };
 
-const cleanText = (value, limit) => {
-  if (typeof value !== 'string') return '';
-  return value.trim().slice(0, limit);
-};
-
-export default async function handler(req, res) {
+export async function handleChat(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'POST') {
@@ -58,17 +55,15 @@ export default async function handler(req, res) {
   const limiterResult = rateLimit(key);
   if (!limiterResult.allowed) {
     res.status(429).json({
-      error: 'Too many login attempts. Please try again later.',
+      error: 'Too many requests',
       retryAfter: limiterResult.retryAfter,
     });
     return;
   }
 
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    res.status(500).json({ error: 'Server is missing Supabase configuration' });
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: 'Server is missing Gemini API configuration' });
     return;
   }
 
@@ -82,28 +77,52 @@ export default async function handler(req, res) {
       })()
     : (req.body || {});
 
-  const email = cleanText(payload.email, 254).toLowerCase();
-  const password = cleanText(payload.password, 500);
+  const input = cleanText(payload.input, 4000);
+  const systemPrompt = cleanText(payload.systemPrompt, 4000);
 
-  if (!email || !password) {
-    res.status(400).json({ error: 'Email and password are required' });
+  if (!input) {
+    res.status(400).json({ error: 'Input is required' });
     return;
   }
 
-  try {
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const prompt = [
+    systemPrompt || 'You are a helpful assistant.',
+    '',
+    `User message: ${input}`,
+  ].join('\n');
 
-    if (error) {
-      res.status(401).json({ error: error.message || 'Authentication failed' });
+  try {
+    const upstream = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }],
+            },
+          ],
+        }),
+      }
+    );
+
+    const data = await upstream.json().catch(() => ({}));
+
+    if (!upstream.ok) {
+      const message = data?.error?.message || 'Gemini request failed';
+      res.status(upstream.status).json({ error: message });
       return;
     }
 
-    res.status(200).json({
-      session: data.session,
-      user: data.user,
-    });
+    const text = data?.candidates?.[0]?.content?.parts
+      ?.map((part) => part?.text || '')
+      .join('')
+      .trim() || 'No response from assistant.';
+
+    res.status(200).json({ text });
   } catch (error) {
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+    res.status(500).json({ error: 'Failed to contact Gemini' });
   }
 }
