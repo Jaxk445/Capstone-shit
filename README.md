@@ -1,205 +1,76 @@
-# Repository Overview
+# DJBC Capstone Project
 
-This project has been reorganized into a simple monorepo with separate
-frontend and backend components.  Each piece lives in its own top‑level
-folder:
+A split frontend/backend monorepo for the employee dashboard used in the DJBC capstone project.
 
-- `frontend/` – React/Vite application, original codebase moved here.  See
-  `frontend/README.md` for full setup, feature list and development
-  instructions.
-- `backend/` – Node‑based server and any API/serverless functions.  A
-  minimal Express starter and the former `api/render.js` are located here.
+## Project Layout
 
+- `frontend/` - React + Vite application with the dashboard UI, Supabase client, charts, maps, and chatbot features.
+- `backend/` - Express server for API routes such as authentication and AI chat.
 
-## Getting Started
+For the full frontend feature guide, setup notes, and UI-specific documentation, see [frontend/README.md](frontend/README.md).
+
+## Quick Start
+
+Clone the repository and install dependencies in the folder you want to work on.
 
 ```bash
 git clone <repository-url>
 cd Capstone-shit
 ```
 
-To work on the frontend:
+Start the frontend:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-To work on the backend:
+Start the backend:
+
 ```bash
 cd backend
 npm install
 npm start
 ```
 
-The front end assumes Supabase credentials in `frontend/.env`; the backend
-can be extended with its own `.env` as needed.
+## Available Scripts
 
----
+Frontend scripts are defined in [frontend/package.json](frontend/package.json):
 
-For detailed documentation, feature descriptions, and deployment notes, open
-`frontend/README.md`.
+- `npm run dev` - start the Vite development server
+- `npm run build` - build the production bundle
+- `npm run preview` - preview the production build locally
+- `npm run lint` - run ESLint
 
+Backend scripts are defined in [backend/package.json](backend/package.json):
 
-### Production Build
-```bash
-npm run build
+- `npm start` - start the Express server
+
+## Environment Variables
+
+The frontend expects a `.env` file in `frontend/` with Supabase and Gemini credentials. The backend can use its own `.env` file if you extend the API server.
+
+Example frontend variables:
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_GEMINI_API_KEY=your_google_generative_ai_api_key
 ```
 
-### Preview Production Build
-```bash
-npm preview
-```
+## Backend
 
-### Code Quality Check
-```bash
-npm run lint
-```
+The backend currently exposes:
 
-### Vercel Deployment
-The project includes `vercel.json` configuration for automatic deployment. Push to your repository and connect it to Vercel for continuous deployment.
+- `POST /api/auth/login`
+- `POST /api/ai/chat`
+- `GET /health`
 
-## Project Structure
+## Deployment
 
-```
-src/
-├── App.jsx                 # Main application component with authentication and data fetching
-├── main.jsx               # Vite entry point
-├── index.css              # Global stylesheet
-├── supabaseClient.js      # Supabase client configuration
-│
-├── components/
-│   ├── ChatBot.jsx        # AI assistant chatbot component
-│   ├── ExportButton.jsx   # Data export functionality for CSV and Excel
-│   ├── Header.jsx         # Application header with notifications
-│   ├── Icons.jsx          # Reusable icon components
-│   ├── Modal.jsx          # Generic modal dialog component
-│   ├── OfficeMap.jsx      # Leaflet map for location display
-│   └── Sidebar.jsx        # Navigation sidebar
-│
-├── utils/
-│   └── rateLimiter.js     # API rate limiting utility
-│
-└── views/
-    ├── AttendanceView.jsx          # Attendance tracking and clock in/out
-    ├── ContributionsView.jsx       # Activity logs and contribution tracking
-    ├── DashboardView.jsx           # Main dashboard with analytics and charts
-    ├── LeaveView.jsx               # Leave request management interface
-    ├── LoginPage.jsx               # User authentication page
-    ├── PerformanceReviewView.jsx   # Performance evaluation interface
-    ├── SettingsView.jsx            # User account settings
-    └── TasksView.jsx               # Task management board and timeline
-```
-
-## Configuration
-
-### Office Location Settings
-Location: `src/views/AttendanceView.jsx`
-
-```javascript
-const OFFICE_LOCATION = {
-  lat: -6.20651363,
-  lng: 106.87604852
-};
-const ALLOWED_RADIUS_METERS = 100;
-```
-
-### Work Hours Configuration
-```javascript
-const WORK_START_TIME = '08:00:00';
-```
-
-## User Roles
-
-### Supervisor Role
-- Access to all employee data
-- Task management and assignment
-- Leave request approval authority
-- Performance review capabilities
-- Team attendance monitoring
-- View all employee contributions
-
-### Employee Role
-- Personal dashboard access
-- Clock in and out with GPS verification
-- Submit leave requests
-- View assigned tasks and status updates
-- Access personal performance reviews
-- Log daily contributions
-- Use AI chatbot assistant
-
-## Real-time Capabilities
-
-The application uses Supabase Realtime for:
-- Task updates and notifications
-- Notification delivery to users
-- Performance review updates
-- Data synchronization across all users
-
-## Responsive Design
-
-The application is responsive across all devices with:
-- Mobile-first design approach
-- Tailwind CSS responsive breakpoints
-- Mobile-optimized sidebar navigation
-- Touch-friendly user interface
-
-## Dark Mode
-
-Dark mode can be toggled using the button in the application header. User preference is saved in browser local storage.
-
-## Debugging
-
-In development mode, enable verbose logging. Console logs are prefixed with `[Dev]` for easy filtering and identification.
-
-## Database Schema
-
-Key database tables in Supabase:
-- `profiles` - User information and roles
-- `tasks` - Task data and assignments
-- `attendance` - Clock in and out records
-- `leave_requests` - Leave request information
-- `performance_reviews` - Review scores and feedback
-- `contributions` - Daily activity logs
-- `notifications` - User notifications
-
-## Security Practices
-
-- All API endpoints implement Supabase Row Level Security (RLS)
-- Sensitive data endpoints are protected by role restrictions
-- Geolocation data access is limited to authenticated users
-- Input validation and sanitization on all forms
-- Configuration management through environment variables
+The repository includes `vercel.json` for deployment support. Connect the project to Vercel or your preferred host and point the frontend and backend to the correct environment variables.
 
 ## License
 
 This project is part of the DJBC Capstone Project.
-
-## Development
-
-### Running Tests
-```bash
-npm run test
-```
-
-### Code Quality Verification
-The project uses ESLint for maintaining code standards:
-```bash
-npm run lint
-```
-
-## Contributing
-
-1. Create a feature branch for your changes
-2. Make your modifications and test thoroughly
-3. Ensure code quality by running lint checks
-4. Submit a pull request for review
-
-## Support
-
-For issues, bugs, or questions, please create an issue in the repository.
-
----
-
-**Last Updated**: February 2026
-**Version**: 1.0.0
