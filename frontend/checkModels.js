@@ -1,45 +1,41 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from 'dotenv';
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
 
 async function listAvailableModels() {
-  const apiKey = process.env.VITE_GEMINI_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
   
   if (!apiKey) {
-    console.error("❌ No API Key found in .env.local");
+    console.error("❌ No Anthropic API key found in .env.local");
     return;
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-
   try {
-    // This asks Google for the list
-    const modelResponse = await genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
-    
-    // We actually need the model manager to list them, not just instantiate one.
-    // Since the SDK wrapper is strict, let's use a direct fetch to be 100% sure.
-    console.log("🔍 Checking available models for your key...");
-    
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    console.log("🔍 Checking Anthropic model access for your key...");
+
+    const response = await fetch('https://api.anthropic.com/v1/models', {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+    });
     const data = await response.json();
 
     if (data.error) {
-        console.error("❌ API Error:", data.error.message);
+        console.error("❌ API Error:", data.error.message || data.error);
         return;
     }
 
     console.log("\n✅ AVAILABLE MODELS:");
     console.log("-----------------------------------");
-    data.models.forEach(model => {
-        // Only show models that support generating content (chatbots)
-        if (model.supportedGenerationMethods.includes("generateContent")) {
-            console.log(`Model Name: ${model.name.replace('models/', '')}`);
-        }
-    });
+    (data.data || data.models || [])
+      .filter(model => (model.id || model.name || '').includes('claude'))
+      .forEach(model => {
+        console.log(`Model Name: ${model.id || model.name}`);
+      });
     console.log("-----------------------------------");
-    console.log("👉 Use one of the names above in your ChatBot.jsx file.");
+    console.log("👉 Use claude-opus-4-6 in your ChatBot backend configuration.");
 
   } catch (error) {
     console.error("Error listing models:", error);

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { sanitizeText, sanitizeTaskTitle } from '../utils/sanitizer.js';
 
 const ChatBot = ({ userProfile, tasks = [] }) => {
@@ -9,23 +10,26 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
 
     // --- 1. INITIAL STATE ---
     const [messages, setMessages] = useState([
-        { role: 'model', text: "Loading your assistant..." }
+        { role: 'assistant', text: 'Initializing secure operational channels...' }
     ]);
 
     // --- 2. SMART GREETING UPDATE ---
     useEffect(() => {
         if (!userProfile) return;
 
-        const myActiveCount = tasks.filter(t => 
-            (t.assigned_to || []).includes(userProfile.id) && 
-            (t.status === 'To Do' || t.status === 'In Progress' || t.status === 'Revision Needed')
-        ).length;
+        const myActiveCount = tasks.filter(t => {
+            const isActive = t.status === 'To Do' || t.status === 'In Progress' || t.status === 'Revision Needed';
+
+            if (userProfile.role === 'supervisor') return isActive;
+
+            return isActive && (t.assigned_to || []).some(id => String(id) === String(userProfile.id));
+        }).length;
 
         if (messages.length <= 1) {
             const safeName = sanitizeText(userProfile.name || '').split(' ')[0] || 'there';
             setMessages([
                 { 
-                    role: 'model', 
+                    role: 'assistant', 
                     text: `Hi ${safeName}! I see you have ${myActiveCount} active tasks. How can I help you today?` 
                 }
             ]);
@@ -94,29 +98,36 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
 
         const cleanInput = sanitizeText(input);
         const userMessage = { role: 'user', text: cleanInput };
-        setMessages(prev => [...prev, userMessage]);
+        const updatedHistory = [...messages, userMessage];
+
+        setMessages(updatedHistory);
         setInput('');
         setIsLoading(true);
 
         try {
             // --- 3. CONTEXT INJECTION ---
-            const myTasks = tasks.filter(t => 
-                (t.assigned_to || []).includes(userProfile.id) && 
-                !['Completed', 'Approved'].includes(t.status)
-            );
+            const sharedTasksContext = tasks.filter(t => {
+                const isNotDone = !['Completed', 'Approved'].includes(t.status);
+                if (userProfile.role === 'supervisor') return isNotDone;
+                return isNotDone && (t.assigned_to || []).some(id => String(id) === String(userProfile.id));
+            });
             
-            const taskContext = myTasks.length > 0 
-                ? myTasks.map(t => `- Task: "${sanitizeTaskTitle(t.title)}" (Status: ${sanitizeText(t.status)}, Priority: ${sanitizeText(t.priority)}, Due: ${sanitizeText(t.due_date)})`).join('\n')
-                : "NO ACTIVE TASKS ASSIGNED.";
+            const taskContext = sharedTasksContext.length > 0 
+                ? sharedTasksContext.map(t => `| ${sanitizeTaskTitle(t.title)} | ${sanitizeText(t.status)} | ${sanitizeText(t.priority)} | ${sanitizeText(t.due_date)} |`).join('\n')
+                : 'No active tasks found.';
 
             const safeName = sanitizeText(userProfile.name || '').split(' ')[0] || 'Employee';
-            const systemPrompt = `You are a smart AI assistant for a Customs and Excise employee named ${safeName}.\n\nCURRENT ACTIVE WORKLOAD:\n${taskContext}\n\nBe helpful, proactive, and professional.`;
+            const systemPrompt = `You are a professional Customs AI assistant for ${safeName}. Current Workspace Context: ${taskContext}. Output all tables in Markdown.`;
+
+            const formattedHistory = updatedHistory
+                .filter((msg, index) => !(index === 0 && msg.text.includes('Initializing secure operational channels...')) && !(index === 0 && msg.text.startsWith('Hi ')))
+                .map(msg => ({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.text }));
 
             const resp = await fetch('/api/ai/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ input: cleanInput, systemPrompt })
+                body: JSON.stringify({ input: cleanInput, systemPrompt, messages: formattedHistory })
             });
 
             if (resp.status === 429) {
@@ -131,11 +142,11 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
 
             recordAttempt();
 
-            setMessages(prev => [...prev, { role: 'model', text }]);
+            setMessages(prev => [...prev, { role: 'assistant', text }]);
 
         } catch (error) {
             console.error("AI Error:", error);
-            setMessages(prev => [...prev, { role: 'model', text: "I'm having trouble connecting. Please try again." }]);
+            setMessages(prev => [...prev, { role: 'assistant', text: "I'm having trouble connecting. Please try again." }]);
         } finally {
             setIsLoading(false);
         }
@@ -146,10 +157,10 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
             
             {isOpen && (
                 <div className="bg-white w-80 h-96 rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden mb-4 animate-fade-in-up dark:bg-gray-800 dark:border-gray-700">
-                    <div className="bg-blue-700 p-4 text-white flex justify-between items-center">
+                    <div className="bg-gradient-to-r from-blue-700 to-indigo-800 p-4 text-white flex justify-between items-center">
                         <div className="flex items-center gap-2">
                             <span className="text-xl">✨</span>
-                            <h3 className="font-bold text-sm">AI Assistant</h3>
+                            <h3 className="font-bold text-sm">Claude AI Workspace Copilot</h3>
                         </div>
                         <button onClick={() => setIsOpen(false)} className="hover:text-gray-200 font-bold">✕</button>
                     </div>
@@ -162,8 +173,19 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
                                     ? 'bg-blue-600 text-white rounded-br-none' 
                                     : 'bg-white text-gray-700 border border-gray-100 rounded-bl-none dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600'
                                 }`}>
-                                    {msg.text.split('**').map((part, i) => 
-                                        i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+                                    {msg.role === 'user' ? (
+                                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                                    ) : (
+                                        <ReactMarkdown
+                                            components={{
+                                                p: ({ node, ...props }) => <p className="whitespace-pre-wrap" {...props} />,
+                                                table: ({ node, ...props }) => <table className="w-full border-collapse border border-gray-300 text-[10px]" {...props} />,
+                                                th: ({ node, ...props }) => <th className="border border-gray-300 bg-gray-100 p-1" {...props} />,
+                                                td: ({ node, ...props }) => <td className="border border-gray-300 p-1" {...props} />,
+                                            }}
+                                        >
+                                            {msg.text}
+                                        </ReactMarkdown>
                                     )}
                                 </div>
                             </div>
@@ -187,8 +209,8 @@ const ChatBot = ({ userProfile, tasks = [] }) => {
                             type="text" 
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder="Ask about tasks..."
+                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                            placeholder="Ask Claude to analyze..."
                             className="flex-1 p-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                         />
                         <button 

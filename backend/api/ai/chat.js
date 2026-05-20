@@ -1,11 +1,36 @@
 const WINDOW_MS = 60 * 1000;
 const MAX_ATTEMPTS = 5;
+const ANTHROPIC_MODEL = 'claude-opus-4-6';
+const ANTHROPIC_VERSION = '2023-06-01';
 
 const attemptsByKey = new Map();
 
 const cleanText = (value, limit) => {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, limit);
+};
+
+const normalizeMessages = (messages) => {
+  if (!Array.isArray(messages)) return [];
+
+  return messages
+    .map((message) => {
+      const role = message?.role === 'assistant' ? 'assistant' : 'user';
+      const rawContent = typeof message?.content === 'string'
+        ? message.content
+        : typeof message?.text === 'string'
+          ? message.text
+          : '';
+      const content = cleanText(rawContent, 4000);
+
+      if (!content) return null;
+
+      return {
+        role,
+        content: [{ type: 'text', text: content }],
+      };
+    })
+    .filter(Boolean);
 };
 
 const getClientKey = (req) => {
@@ -61,9 +86,9 @@ export async function handleChat(req, res) {
     return;
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
   if (!apiKey) {
-    res.status(500).json({ error: 'Server is missing Gemini API configuration' });
+    res.status(500).json({ error: 'Server is missing Anthropic API configuration' });
     return;
   }
 
@@ -79,31 +104,32 @@ export async function handleChat(req, res) {
 
   const input = cleanText(payload.input, 4000);
   const systemPrompt = cleanText(payload.systemPrompt, 4000);
+  const messages = normalizeMessages(payload.messages);
 
-  if (!input) {
+  if (!input && messages.length === 0) {
     res.status(400).json({ error: 'Input is required' });
     return;
   }
 
-  const prompt = [
-    systemPrompt || 'You are a helpful assistant.',
-    '',
-    `User message: ${input}`,
-  ].join('\n');
+  const conversation = messages.length > 0
+    ? messages
+    : [{ role: 'user', content: [{ type: 'text', text: input }] }];
 
   try {
     const upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      'https://api.anthropic.com/v1/messages',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': ANTHROPIC_VERSION,
+        },
         body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
-            },
-          ],
+          model: ANTHROPIC_MODEL,
+          max_tokens: 1024,
+          system: systemPrompt || 'You are a helpful assistant.',
+          messages: conversation,
         }),
       }
     );
@@ -111,18 +137,18 @@ export async function handleChat(req, res) {
     const data = await upstream.json().catch(() => ({}));
 
     if (!upstream.ok) {
-      const message = data?.error?.message || 'Gemini request failed';
+      const message = data?.error?.message || data?.error?.type || 'Anthropic request failed';
       res.status(upstream.status).json({ error: message });
       return;
     }
 
-    const text = data?.candidates?.[0]?.content?.parts
+    const text = data?.content
       ?.map((part) => part?.text || '')
       .join('')
       .trim() || 'No response from assistant.';
 
     res.status(200).json({ text });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to contact Gemini' });
+    res.status(500).json({ error: 'Failed to contact Anthropic' });
   }
 }

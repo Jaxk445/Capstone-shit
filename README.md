@@ -31,7 +31,7 @@ Start the backend:
 ```bash
 cd backend
 npm install
-npm start
+node index.js
 ```
 
 ## Available Scripts
@@ -49,14 +49,14 @@ Backend scripts are defined in [backend/package.json](backend/package.json):
 
 ## Environment Variables
 
-The frontend expects a `.env` file in `frontend/` with Supabase and Gemini credentials. The backend can use its own `.env` file if you extend the API server.
+The frontend expects a `.env` file in `frontend/` with Supabase credentials. The backend uses its own `.env` file for the Anthropic API key.
 
 Example frontend variables:
 
 ```env
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-VITE_GEMINI_API_KEY=your_google_generative_ai_api_key
+ANTHROPIC_API_KEY=your_anthropic_api_key
 ```
 
 ## Backend

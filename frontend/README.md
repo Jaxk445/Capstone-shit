@@ -2,7 +2,7 @@
 
 This directory contains the React + Vite application that powers the employee
 tracker dashboard. It is the client-side portion of the system and is
-configured with Tailwind CSS, Supabase client, and Google Generative AI.
+configured with Tailwind CSS, Supabase client, and Anthropic Claude.
 
 The following documentation was migrated from the repository root when the
 project was split into separate frontend and backend directories.  For
@@ -67,7 +67,7 @@ This is a full-featured HR and operations dashboard built with React, Vite, and 
 - Date range filtering capability
 
 ### AI Chatbot Assistant
-- Google Generative AI (Gemini) powered assistant
+- Anthropic Claude powered assistant
 - Context-aware responses using employee data
 - Task insights and recommendations
 - In-app chat interface
@@ -88,7 +88,7 @@ This is a full-featured HR and operations dashboard built with React, Vite, and 
 - **Real-time Updates**: Supabase Realtime subscriptions
 - **Charts**: Recharts 3.3.0
 - **Maps**: Leaflet 1.9.4 with React-Leaflet 5.0.0
-- **Artificial Intelligence**: Google Generative AI SDK
+- **Artificial Intelligence**: Anthropic Claude via backend API
 - **UI Icons**: Lucide React
 - **Notifications**: React Hot Toast
 - **Hosting**: Vercel
@@ -99,7 +99,7 @@ This is a full-featured HR and operations dashboard built with React, Vite, and 
 - Node.js version 16 or higher
 - npm or yarn package manager
 - Supabase account
-- Google Generative AI API key for the chatbot feature
+- Anthropic API key for the chatbot feature
 
 ### Setup Instructions
 
@@ -119,7 +119,7 @@ Create a `.env` file in the frontend directory with the following variables:
 ```env
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-VITE_GEMINI_API_KEY=your_google_generative_ai_api_key
+ANTHROPIC_API_KEY=your_anthropic_api_key
 ```
 
 4. Start the development server
