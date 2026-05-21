@@ -1,0 +1,7 @@
+{
+  "name": "djbc-capstone-workspace",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ]
+}
