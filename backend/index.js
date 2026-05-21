@@ -5,6 +5,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { handleLogin } from './api/auth/login.js';
+import { handleSignup } from './api/auth/signup.js';
 import { handleChat } from './api/ai/chat.js';
 
 const app = express();
@@ -16,6 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.post('/api/auth/login', handleLogin);
+app.post('/api/auth/signup', handleSignup);
 app.post('/api/ai/chat', handleChat);
 
 // serve static frontend when running in production

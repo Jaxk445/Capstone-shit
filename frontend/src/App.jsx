@@ -5,6 +5,7 @@ import { Toaster, toast } from 'react-hot-toast';
 // --- COMPONENTS ---
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
+import Footer from './components/Footer';
 
 // --- VIEWS ---
 const ChatBot = lazy(() => import('./components/ChatBot'));
@@ -293,6 +294,7 @@ export default function App() {
             userProfile={userProfile}
             onLogout={handleLogout}
             notifications={notifications}
+            tasks={tasks}
             onNotificationsRead={handleNotificationsRead}
             isDarkMode={isDarkMode}
             toggleDarkMode={toggleDarkMode}
@@ -327,6 +329,10 @@ export default function App() {
               </Suspense>
             )}
           </main>
+
+          <div className="px-6 lg:px-8 pb-4 shrink-0">
+            <Footer />
+          </div>
       </div>
     </div>
   );
