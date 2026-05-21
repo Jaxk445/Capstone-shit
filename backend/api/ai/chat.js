@@ -152,3 +152,7 @@ export async function handleChat(req, res) {
     res.status(500).json({ error: 'Failed to contact Anthropic' });
   }
 }
+
+export default async function handler(req, res) {
+  return handleChat(req, res);
+}
