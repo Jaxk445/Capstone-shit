@@ -1,242 +1,658 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 
-const PerformanceReviewView = ({ userProfile, allUsers, createNotification }) => {
-    const [selectedEmployee, setSelectedEmployee] = useState(userProfile.role === 'supervisor' ? null : userProfile.id);
-    const [scores, setScores] = useState({ quality: 0, discipline: 0, teamwork: 0 });
-    const [reviewText, setReviewText] = useState('');
-    const [history, setHistory] = useState([]);
-    const [loading, setLoading] = useState(false);
+const PerformanceReviewView = ({
+    userProfile,
+    allUsers = [],
+    attendance = [],
+    tasks = [],
+    contributions = [],
+    createNotification,
+}) => {
+    const [selectedUserId, setSelectedUserId] = useState('');
+    const [scores, setScores] = useState({});
+    const [comments, setComments] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [telemetrySummary, setTelemetrySummary] = useState(null);
+    const [evaluations, setEvaluations] = useState([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    const [editingEvalId, setEditingEvalId] = useState(null);
+    const [selectedHistoricalEval, setSelectedHistoricalEval] = useState(null);
+    const [searchIntern, setSearchIntern] = useState('');
+    const [sortOrder, setSortOrder] = useState('name-az');
 
-    const employeeUsers = allUsers.filter(u => u.role === 'employee');
-    const selectedUserData = allUsers.find(u => u.id === selectedEmployee);
+    const employeeUsers = allUsers.filter((user) => user.role === 'employee');
+    const totalQuestionsCount = 26;
 
-    // --- FETCH HISTORY ---
-    useEffect(() => {
-        if (!selectedEmployee) return;
-        
-        const fetchReviews = async () => {
-            setLoading(true);
-            const { data } = await supabase
-                .from('performance_reviews')
-                .select('*')
-                .eq('employee_id', selectedEmployee)
-                .order('date', { ascending: false });
-            
-            setHistory(data || []);
-            setLoading(false);
-        };
+    const SECTIONS = [
+        {
+            id: 'A',
+            title: 'A. Business/Organization Competencies',
+            items: [
+                { id: 'A1', text: 'Consistency in submitting assignments within the expected period of time (meeting the deadline)' },
+                { id: 'A2', text: 'Ability to produce reliable work quality by being thorough with minimum errors.' },
+                { id: 'A3', text: 'Ability to work under minimum supervision.' },
+                { id: 'A4', text: 'Ability to be active and consistent in seeking knowledge/information needed to perform the job.' },
+                { id: 'A5', text: 'Ability to analyze/identify the main issues/problems.' },
+                { id: 'A6', text: 'Ability to offer relevant solutions/recommendations to problems.' },
+                { id: 'A7', text: 'Level of discipline to maintain agreed working hours.' },
+                { id: 'A8', text: 'Level of awareness of organizational code of conduct and culture.' },
+            ],
+        },
+        {
+            id: 'B',
+            title: 'B. People Competency',
+            items: [
+                { id: 'B1', text: 'Ability to prioritize team goals over individual goals.' },
+                { id: 'B2', text: 'Ability to accept constructive feedback from team members or supervisors in a mature and professional manner.' },
+                { id: 'B3', text: 'Level of initiative to seek information on team needs and act on it.' },
+                { id: 'B4', text: 'Level of awareness of customer needs, expectations, problems, and circumstances.' },
+                { id: 'B5', text: 'Ability to build rapport and cooperation with customers.' },
+                { id: 'B6', text: 'Level of engagement with team members (including attending discussions, being helpful, and showing empathy).' },
+                { id: 'B7', text: 'Ability to share important/relevant information (including ideas and recent updates) with team members and supervisors.' },
+            ],
+        },
+        {
+            id: 'C',
+            title: 'C. Self Management / Behavior',
+            items: [
+                { id: 'C1', text: 'Ability to behave in a respectful and consistent manner.' },
+                { id: 'C2', text: 'Ability to share feelings to let colleagues understand current state of mind.' },
+                { id: 'C3', text: 'Ability to manage confidential information.' },
+                { id: 'C4', text: 'Ability to treat other people with respect.' },
+                { id: 'C5', text: 'Ability to maintain constant performance and act rationally under stressful situations.' },
+                { id: 'C6', text: 'Ability to adjust to emerging changes in the workplace.' },
+            ],
+        },
+        {
+            id: 'D',
+            title: 'D. Technical Skill',
+            items: [
+                { id: 'D1', text: 'Ability to listen and follow instructions.' },
+                { id: 'D2', text: 'Ability to convey clear messages and information in good spoken language.' },
+                { id: 'D3', text: 'Ability to write clearly and concisely.' },
+                { id: 'D4', text: 'Ability to respond to questions, feedback, and instructions in a clear and correct manner.' },
+                { id: 'D5', text: 'Level of relevancy of knowledge to business needs.' },
+            ],
+        },
+    ];
 
-        fetchReviews();
-        
-        // Reset form when changing user
-        setScores({ quality: 0, discipline: 0, teamwork: 0 });
-        setReviewText('');
-    }, [selectedEmployee]);
+    const SCORE_OPTIONS = [
+        { val: 1, label: 'No Improv.' },
+        { val: 2, label: 'Some Improv.' },
+        { val: 3, label: 'Great Improv.' },
+    ];
 
-    // --- CALCULATE AVERAGE ---
-    const calculateAverage = (q, d, t) => {
-        if (!q && !d && !t) return '0.0';
-        return ((q + d + t) / 3).toFixed(1);
+    const loadEvaluations = async () => {
+        if (!userProfile?.id) return;
+
+        setIsLoadingHistory(true);
+        let query = supabase.from('performance_reviews').select('*');
+        if (userProfile.role !== 'supervisor') {
+            query = query.eq('employee_id', userProfile.id);
+        }
+
+        const { data, error } = await query.order('date', { ascending: false });
+        if (!error) setEvaluations(data || []);
+        setIsLoadingHistory(false);
     };
 
-    const currentAverage = calculateAverage(scores.quality, scores.discipline, scores.teamwork);
+    useEffect(() => {
+        if (!userProfile?.id) return;
 
-    // --- SUBMIT REVIEW ---
-    const handleSubmit = async () => {
-        if (scores.quality === 0 || scores.discipline === 0 || scores.teamwork === 0) {
-            alert("Please rate all criteria (1-5) before submitting.");
+        if (userProfile.role !== 'supervisor') {
+            setSelectedUserId(userProfile.id);
+        }
+
+        loadEvaluations();
+    }, [userProfile]);
+
+    useEffect(() => {
+        if (!selectedUserId) {
+            setTelemetrySummary(null);
             return;
         }
 
-        const { error } = await supabase.from('performance_reviews').insert({
-            employee_id: selectedEmployee,
-            supervisor_id: userProfile.id,
-            date: new Date().toISOString().split('T')[0],
-            review_text: reviewText,
-            rating: Math.round(parseFloat(currentAverage)), // General rating for summary
-            score_quality: scores.quality,
-            score_discipline: scores.discipline,
-            score_teamwork: scores.teamwork
+        const empAttendance = attendance.filter((entry) => entry.employee_id === selectedUserId);
+        const totalDays = empAttendance.length;
+        const onTimeDays = empAttendance.filter((entry) => entry.status === 'Present').length;
+        const punctuality = totalDays > 0 ? Math.round((onTimeDays / totalDays) * 100) : null;
+
+        const empTasks = tasks.filter((task) => {
+            const assignedTo = Array.isArray(task.assigned_to)
+                ? task.assigned_to
+                : task.assigned_to
+                    ? [task.assigned_to]
+                    : [];
+            return assignedTo.includes(selectedUserId);
         });
 
-        if (error) {
-            alert("Error: " + error.message);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const overdueCount = empTasks.filter(
+            (task) => !['Approved', 'Completed'].includes(task.status) && task.due_date && task.due_date < todayStr,
+        ).length;
+
+        const forumActivity = contributions.filter((entry) => entry.employee_id === selectedUserId).length;
+        const commentActivity = contributions.filter((entry) => (entry.replies || []).some((reply) => reply.author_id === selectedUserId)).length;
+
+        setTelemetrySummary({
+            punctuality,
+            overdueCount,
+            totalForumEngagement: forumActivity + commentActivity,
+        });
+    }, [selectedUserId, attendance, tasks, contributions]);
+
+    const handleAutoFillTelemetry = () => {
+        if (!telemetrySummary) return;
+
+        const automaticInferredScores = { ...scores };
+        SECTIONS.forEach((section) => {
+            section.items.forEach((item) => {
+                if (!automaticInferredScores[item.id]) automaticInferredScores[item.id] = 2;
+            });
+        });
+
+        if (telemetrySummary.overdueCount === 0) automaticInferredScores.A1 = 3;
+        else if (telemetrySummary.overdueCount > 2) automaticInferredScores.A1 = 1;
+
+        if (telemetrySummary.punctuality !== null) {
+            if (telemetrySummary.punctuality >= 90) automaticInferredScores.A7 = 3;
+            else if (telemetrySummary.punctuality < 75) automaticInferredScores.A7 = 1;
+        }
+
+        if (telemetrySummary.totalForumEngagement >= 5) {
+            automaticInferredScores.B6 = 3;
+            automaticInferredScores.B7 = 3;
+        }
+
+        setScores(automaticInferredScores);
+    };
+
+    const handleSelectScore = (itemId, rating) => {
+        setScores((previous) => ({ ...previous, [itemId]: rating }));
+    };
+
+    const calculateFinalScores = () => {
+        const answeredCount = Object.keys(scores).length;
+        if (answeredCount === 0) {
+            return {
+                pointTotal: 0,
+                rubric: {
+                    grade: 'P',
+                    style: 'text-red-500 bg-red-950/20',
+                    desc: 'No assessment recorded.',
+                },
+            };
+        }
+
+        const rawSum = Object.values(scores).reduce((sum, value) => sum + value, 0);
+        const maxPossibleRaw = totalQuestionsCount * 3;
+        const pointTotal = Number(((rawSum / maxPossibleRaw) * 100).toFixed(2));
+
+        let rubric = {
+            grade: 'P (Poor / Unsatisfactory)',
+            style: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300 border-red-200 dark:border-red-900',
+            desc: 'Cannot demonstrate expected performance parameters.',
+        };
+
+        if (pointTotal >= 60) {
+            rubric = {
+                grade: 'A (Average / Satisfactory)',
+                style: 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300 border-green-200 dark:border-green-900',
+                desc: 'Meets standard expectations requirement.',
+            };
+        } else if (pointTotal >= 50) {
+            rubric = {
+                grade: 'NI (Needs Improvement)',
+                style: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-900',
+                desc: 'Demonstrates poor metrics in most monitored sectors.',
+            };
+        }
+
+        return { pointTotal, rubric };
+    };
+
+    const { pointTotal, rubric } = calculateFinalScores();
+    const totalAnsweredQuestions = Object.keys(scores).length;
+    const selectedUserData = allUsers.find((user) => user.id === selectedUserId);
+
+    const handleSubmitEvaluation = async () => {
+        if (userProfile?.role !== 'supervisor') return;
+        if (!selectedUserId) return alert('Please select an intern.');
+        if (totalAnsweredQuestions < totalQuestionsCount) {
+            return alert(`Incomplete Rubric: Missing ${totalQuestionsCount - totalAnsweredQuestions} criteria flags.`);
+        }
+
+        setIsSubmitting(true);
+
+        const payload = {
+            employee_id: selectedUserId,
+            supervisor_id: userProfile.id,
+            scores,
+            final_score: pointTotal,
+            comments,
+            review_text: comments,
+            rating: Math.round(pointTotal),
+            date: new Date().toISOString().split('T')[0],
+        };
+
+        if (editingEvalId) {
+            const { error } = await supabase.from('performance_reviews').update(payload).eq('id', editingEvalId);
+            if (error) {
+                alert('Update failed: ' + error.message);
+            } else {
+                alert('Appraisal updated cleanly.');
+                await loadEvaluations();
+                resetForm();
+            }
         } else {
-            await createNotification(selectedEmployee, `New Performance Evaluation Submitted (Score: ${currentAverage})`);
-            alert("Evaluation saved successfully.");
-            // Refresh
-            setScores({ quality: 0, discipline: 0, teamwork: 0 });
-            setReviewText('');
-            // Re-fetch history locally
-            const { data } = await supabase.from('performance_reviews').select('*').eq('employee_id', selectedEmployee).order('date', { ascending: false });
-            setHistory(data || []);
+            const { error } = await supabase.from('performance_reviews').insert(payload);
+            if (error) {
+                alert('Submission failed: ' + error.message);
+            } else {
+                if (createNotification) {
+                    await createNotification(selectedUserId, `New Performance Evaluation Submitted (Score: ${pointTotal})`);
+                }
+                alert('Performance appraisal submitted successfully!');
+                await loadEvaluations();
+                resetForm();
+            }
+        }
+
+        setIsSubmitting(false);
+    };
+
+    const handleEditLoad = (evaluation) => {
+        setSelectedUserId(evaluation.employee_id);
+        setScores(evaluation.scores || {});
+        setComments(evaluation.comments || evaluation.review_text || '');
+        setEditingEvalId(evaluation.id);
+        setSelectedHistoricalEval(null);
+    };
+
+    const handleDeleteEvaluation = async (id) => {
+        if (!window.confirm('Are you sure you want to permanently delete this assessment record?')) return;
+
+        const { error } = await supabase.from('performance_reviews').delete().eq('id', id);
+        if (error) {
+            alert('Deletion failed: ' + error.message);
+        } else {
+            alert('Record deleted successfully.');
+            await loadEvaluations();
         }
     };
 
-    const getUserName = (id) => allUsers.find(u => u.id === id)?.name || 'Unknown Supervisor';
+    const resetForm = () => {
+        setSelectedUserId(userProfile?.role === 'supervisor' ? '' : userProfile?.id || '');
+        setScores({});
+        setComments('');
+        setEditingEvalId(null);
+    };
 
-    // --- COMPONENT: STAR RATER ---
-    const StarRater = ({ label, value, onChange, readonly }) => (
-        <div className="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-700">
-            <span className="text-sm font-bold text-gray-600 dark:text-gray-300">{label}</span>
-            <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map(star => (
-                    <button
-                        key={star}
-                        onClick={() => !readonly && onChange(star)}
-                        disabled={readonly}
-                        className={`w-8 h-8 text-lg transition-transform ${!readonly ? 'hover:scale-110' : ''} ${
-                            star <= value ? 'text-yellow-400' : 'text-gray-200 dark:text-gray-600'
-                        }`}
-                    >
-                        ★
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
+    const getUserName = (id) => allUsers.find((user) => user.id === id)?.name || 'Unknown User';
+
+    const processedRoster = employeeUsers
+        .filter((employee) => employee.name.toLowerCase().includes(searchIntern.toLowerCase()))
+        .sort((left, right) => {
+            if (sortOrder === 'name-az') return left.name.localeCompare(right.name);
+            if (sortOrder === 'name-za') return right.name.localeCompare(left.name);
+            if (sortOrder === 'campus') {
+                const leftSource = left.source || left.university || '';
+                const rightSource = right.source || right.university || '';
+                return leftSource.localeCompare(rightSource);
+            }
+            return 0;
+        });
+
+    const selectedRecordDate = (record) => record.created_at || record.date || null;
 
     return (
-        <div className="p-8 h-full flex flex-col">
-            <div className="flex justify-between items-end mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Performance Evaluation</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Formal assessment of employee metrics.</p>
-                </div>
+        <div className="p-8 max-w-7xl mx-auto space-y-6">
+            <div>
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">Performance Assessment</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Formal assessment engine mapped directly to university appraisal frameworks.</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
-                
-                {/* LEFT: SELECTOR (Supervisor Only) */}
-                {userProfile.role === 'supervisor' && (
-                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm h-full overflow-y-auto dark:bg-gray-800 dark:border-gray-700">
-                        <h3 className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-wider">Staff List</h3>
-                        <div className="space-y-1">
-                            {employeeUsers.map(emp => (
-                                <button
-                                    key={emp.id}
-                                    onClick={() => setSelectedEmployee(emp.id)}
-                                    className={`w-full text-left px-4 py-3 rounded-md text-sm font-medium transition-all ${
-                                        selectedEmployee === emp.id 
-                                        ? 'bg-blue-600 text-white shadow-md' 
-                                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'
-                                    }`}
+            {userProfile?.role === 'supervisor' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="space-y-4">
+                        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Active Intern Roster</h3>
+                            <div className="space-y-2">
+                                <input
+                                    type="text"
+                                    value={searchIntern}
+                                    onChange={(event) => setSearchIntern(event.target.value)}
+                                    placeholder="Search intern..."
+                                    className="w-full p-2 text-[11px] border border-gray-100 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 dark:text-white focus:outline-none"
+                                />
+                                <select
+                                    value={sortOrder}
+                                    onChange={(event) => setSortOrder(event.target.value)}
+                                    className="w-full p-2 text-[11px] border border-gray-100 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 dark:text-white focus:outline-none"
                                 >
-                                    {emp.name}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* MIDDLE & RIGHT: FORM & HISTORY */}
-                <div className={`${userProfile.role === 'supervisor' ? 'lg:col-span-2' : 'lg:col-span-3'} space-y-6 overflow-y-auto`}>
-                    
-                    {/* 1. EVALUATION FORM (Supervisor Only) */}
-                    {userProfile.role === 'supervisor' && selectedUserData && (
-                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden dark:bg-gray-800 dark:border-gray-700">
-                            <div className="bg-gray-50 p-6 border-b border-gray-200 dark:bg-gray-700/50 dark:border-gray-700 flex justify-between items-center">
-                                <div>
-                                    <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">New Evaluation: {selectedUserData.name}</h2>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">Date: {new Date().toLocaleDateString()}</p>
-                                </div>
-                                <div className="text-center bg-white px-4 py-2 rounded border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-600">
-                                    <div className="text-[10px] text-gray-400 uppercase font-bold">Score</div>
-                                    <div className="text-2xl font-bold text-blue-600">{currentAverage}</div>
-                                </div>
+                                    <option value="name-az">Sort: Alphabetical (A-Z)</option>
+                                    <option value="name-za">Sort: Alphabetical (Z-A)</option>
+                                    <option value="campus">Sort: Campus / Origin</option>
+                                </select>
                             </div>
 
-                            <div className="p-6">
-                                <div className="mb-6">
-                                    <StarRater label="Quality of Work" value={scores.quality} onChange={(v) => setScores({...scores, quality: v})} />
-                                    <StarRater label="Discipline & Punctuality" value={scores.discipline} onChange={(v) => setScores({...scores, discipline: v})} />
-                                    <StarRater label="Team Collaboration" value={scores.teamwork} onChange={(v) => setScores({...scores, teamwork: v})} />
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto pt-2">
+                                {processedRoster.map((employee) => (
+                                    <button
+                                        key={employee.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedUserId(employee.id);
+                                            setScores({});
+                                            setComments('');
+                                            setEditingEvalId(null);
+                                            setSelectedHistoricalEval(null);
+                                        }}
+                                        className={`w-full text-left p-3 rounded-xl font-bold text-xs border transition-all flex items-center justify-between ${
+                                            selectedUserId === employee.id
+                                                ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                                                : 'bg-gray-50 hover:bg-gray-100 border-gray-50 dark:bg-gray-900/40 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        <span>{employee.name}</span>
+                                        <span className={`text-[9px] px-2 py-0.5 rounded-lg border uppercase ${selectedUserId === employee.id ? 'bg-white/20 border-white/10' : 'bg-gray-200/60 text-gray-400 dark:bg-gray-800'}`}>
+                                            {employee.source?.split(' ')[0] || 'Intern'}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {telemetrySummary && (
+                            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-3 animate-fade-in">
+                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Live Workspace Telemetry</h3>
+                                <div className="space-y-2 text-[11px] font-bold">
+                                    <div className="p-2.5 bg-gray-50 dark:bg-gray-900 rounded-xl flex justify-between">
+                                        <span className="text-gray-400">Punctuality Score:</span>
+                                        <span className="text-gray-700 dark:text-gray-200">{telemetrySummary.punctuality !== null ? `${telemetrySummary.punctuality}%` : 'N/A'}</span>
+                                    </div>
+                                    <div className="p-2.5 bg-gray-50 dark:bg-gray-900 rounded-xl flex justify-between">
+                                        <span className="text-gray-400">Overdue Tasks:</span>
+                                        <span className={telemetrySummary.overdueCount > 0 ? 'text-red-500' : 'text-green-500'}>{telemetrySummary.overdueCount} Items</span>
+                                    </div>
+                                    <div className="p-2.5 bg-gray-50 dark:bg-gray-900 rounded-xl flex justify-between">
+                                        <span className="text-gray-400">Forum Interactions:</span>
+                                        <span className="text-gray-700 dark:text-gray-200">{telemetrySummary.totalForumEngagement} Activity</span>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleAutoFillTelemetry}
+                                    className="w-full bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900 py-2.5 rounded-xl text-xs font-bold transition shadow-sm"
+                                >
+                                    Auto-Analyze Workspace Telemetry
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="lg:col-span-2 space-y-4">
+                        {selectedUserId ? (
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col">
+                                <div className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 flex justify-between items-center sticky top-0 z-10 backdrop-blur">
+                                    <div>
+                                        <h2 className="font-bold text-sm text-gray-800 dark:text-white">
+                                            {editingEvalId ? 'Amending Review:' : 'Grading Rubric:'} {selectedUserData ? selectedUserData.name : getUserName(selectedUserId)}
+                                        </h2>
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">
+                                            Completed: {totalAnsweredQuestions}/{totalQuestionsCount} Fields Filled
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className={`p-2 rounded-xl border text-[10px] font-bold leading-tight ${rubric.style}`}>
+                                            Index: <b className="text-xs font-black">{pointTotal}</b> | {rubric.grade.split(' ')[0]}
+                                        </div>
+                                        {editingEvalId && (
+                                            <button
+                                                type="button"
+                                                onClick={resetForm}
+                                                className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:text-white text-[10px] font-bold px-2.5 py-2 rounded-lg transition"
+                                            >
+                                                Cancel
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
-                                <label className="block text-sm font-bold text-gray-700 mb-2 dark:text-gray-300">Supervisor Comments</label>
-                                <textarea 
-                                    value={reviewText}
-                                    onChange={(e) => setReviewText(e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg text-sm h-24 focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                    placeholder="Enter formal feedback regarding performance..."
-                                ></textarea>
+                                <div className="p-5 space-y-8 max-h-[500px] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700/60">
+                                    {SECTIONS.map((section) => (
+                                        <div key={section.id} className="pt-6 first:pt-0 space-y-4">
+                                            <h3 className="font-bold text-xs text-blue-600 dark:text-blue-400 uppercase tracking-wide border-b dark:border-gray-700 pb-1.5">{section.title}</h3>
+                                            <div className="space-y-3">
+                                                {section.items.map((item, index) => (
+                                                    <div key={item.id} className="p-3.5 border border-gray-50 dark:border-gray-700/40 bg-gray-50/20 dark:bg-gray-900/20 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-gray-50/50 transition-all">
+                                                        <div className="flex gap-2 text-xs text-gray-700 dark:text-gray-300 leading-normal flex-1">
+                                                            <span className="font-mono font-bold text-gray-400">{index + 1}.</span>
+                                                            <p>{item.text}</p>
+                                                        </div>
+                                                        <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-xl self-end md:self-center shrink-0 border dark:border-gray-700 gap-1">
+                                                            {SCORE_OPTIONS.map((option) => {
+                                                                const isSelected = scores[item.id] === option.val;
+                                                                return (
+                                                                    <button
+                                                                        key={option.val}
+                                                                        type="button"
+                                                                        onClick={() => handleSelectScore(item.id, option.val)}
+                                                                        className={`px-3 py-1.5 text-[10px] font-extrabold rounded-lg transition-all ${
+                                                                            isSelected
+                                                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                                                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+                                                                        }`}
+                                                                    >
+                                                                        {option.label}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
 
-                                <div className="mt-6 flex justify-end">
-                                    <button onClick={handleSubmit} className="bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg shadow hover:bg-blue-800 transition-all">
-                                        Submit Evaluation
+                                    <div className="pt-6">
+                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Supervisor Concluding Feedback Remarks</label>
+                                        <textarea
+                                            value={comments}
+                                            onChange={(event) => setComments(event.target.value)}
+                                            className="w-full p-4 border border-gray-100 dark:border-gray-600 text-xs rounded-xl bg-gray-50/50 dark:bg-gray-900 dark:text-white resize-none focus:outline-none"
+                                            placeholder="Write summary evaluation observations regarding strengths or performance indicators..."
+                                            rows="2"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 flex justify-between items-center">
+                                    <span className="text-[10px] text-gray-400 italic max-w-xs leading-tight">{rubric.desc}</span>
+                                    <button
+                                        type="button"
+                                        onClick={handleSubmitEvaluation}
+                                        disabled={isSubmitting || totalAnsweredQuestions < totalQuestionsCount}
+                                        className={`px-5 py-2 rounded-xl text-xs font-bold text-white shadow transition-all ${
+                                            totalAnsweredQuestions < totalQuestionsCount
+                                                ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed text-gray-500'
+                                                : 'bg-blue-600 hover:bg-blue-700'
+                                        }`}
+                                    >
+                                        {isSubmitting ? 'Saving...' : editingEvalId ? 'Update Appraisal' : 'Submit Scorecard'}
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {/* 2. HISTORY LIST (Visible to Supervisor & Employee) */}
-                    {selectedEmployee ? (
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-800 mb-4 dark:text-gray-100">
-                                {userProfile.role === 'supervisor' ? 'Evaluation History' : 'My Performance Reports'}
-                            </h3>
-                            
-                            {history.length === 0 && <p className="text-gray-400 italic">No evaluations found.</p>}
-
-                            <div className="space-y-4">
-                                {history.map(review => {
-                                    // Calculate average for display if older records lack detailed scores
-                                    const avg = calculateAverage(
-                                        review.score_quality || review.rating, 
-                                        review.score_discipline || review.rating, 
-                                        review.score_teamwork || review.rating
-                                    );
-
-                                    return (
-                                        <div key={review.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex gap-4 dark:bg-gray-800 dark:border-gray-700">
-                                            {/* Score Badge */}
-                                            <div className="flex flex-col items-center justify-center min-w-[80px] bg-blue-50 rounded-lg border border-blue-100 p-2 dark:bg-blue-900/30 dark:border-blue-800">
-                                                <span className="text-2xl font-bold text-blue-700 dark:text-blue-400">{avg}</span>
-                                                <span className="text-[10px] uppercase font-bold text-blue-400">Average</span>
-                                            </div>
-
-                                            {/* Details */}
-                                            <div className="flex-grow">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div>
-                                                        <p className="text-xs text-gray-400 uppercase font-bold">{review.date}</p>
-                                                        <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Review by {getUserName(review.supervisor_id)}</p>
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* Sub-scores (Small tags) */}
-                                                <div className="flex gap-2 mb-3">
-                                                    <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600">
-                                                        Qual: <b>{review.score_quality || '-'}</b>
-                                                    </span>
-                                                    <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600">
-                                                        Disc: <b>{review.score_discipline || '-'}</b>
-                                                    </span>
-                                                    <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600">
-                                                        Team: <b>{review.score_teamwork || '-'}</b>
-                                                    </span>
-                                                </div>
-
-                                                <p className="text-sm text-gray-600 dark:text-gray-300 italic border-l-2 border-gray-200 pl-3 dark:border-gray-600">
-                                                    "{review.review_text}"
-                                                </p>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                        ) : (
+                            <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl h-64 flex flex-col justify-center items-center text-center p-6 text-gray-400 dark:bg-gray-800 dark:border-gray-700">
+                                <span className="text-2xl mb-1">No target intern highlighted</span>
+                                <h4 className="font-bold text-xs text-gray-700 dark:text-gray-300">Select a staff entry from the roster menu to initialize grading channels.</h4>
                             </div>
-                        </div>
-                    ) : (
-                        // Empty State
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2 opacity-50 mt-20">
-                            <span className="text-4xl">📋</span>
-                            <p>Select an employee to begin evaluation.</p>
-                        </div>
-                    )}
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+                <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/30">
+                    <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100">
+                        {userProfile?.role === 'supervisor' ? 'Historical Appraisal Logs Ledger' : 'My Performance Appraisals'}
+                    </h2>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-gray-50/80 dark:bg-gray-700/40 border-b border-gray-100 dark:border-gray-700 text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                            <tr>
+                                <th className="p-4">Date Issued</th>
+                                <th className="p-4">Intern Name</th>
+                                <th className="p-4">Accredited Index</th>
+                                <th className="p-4">Evaluation Remarks Summary</th>
+                                <th className="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700 text-xs">
+                            {evaluations.map((record) => {
+                                const displayIndex = record.final_score ?? record.rating ?? 0;
+                                return (
+                                    <tr key={record.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-all">
+                                        <td className="p-4 font-mono font-bold text-gray-500">
+                                            {selectedRecordDate(record) ? new Date(selectedRecordDate(record)).toLocaleDateString('en-GB') : 'Pending'}
+                                        </td>
+                                        <td className="p-4 font-bold text-gray-800 dark:text-gray-200">{getUserName(record.employee_id)}</td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-0.5 font-bold rounded-lg ${displayIndex >= 60 ? 'bg-green-50 text-green-700 dark:bg-green-950/30' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/30'}`}>
+                                                Index: {displayIndex}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-gray-500 max-w-xs truncate italic">"{record.comments || record.review_text || 'No written remarks.'}"</td>
+                                        <td className="p-4 text-right">
+                                            <div className="inline-flex gap-2 justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedHistoricalEval(record)}
+                                                    className="text-blue-600 bg-blue-50 px-2 py-1 rounded-md font-bold text-[10px] dark:bg-blue-900/30 dark:text-blue-300"
+                                                >
+                                                    Full Rubric Report
+                                                </button>
+                                                {userProfile?.role === 'supervisor' && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleEditLoad(record)}
+                                                            className="text-amber-600 bg-amber-50 px-2 py-1 rounded-md font-bold text-[10px] dark:bg-amber-900/30 dark:text-amber-300"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteEvaluation(record.id)}
+                                                            className="text-red-600 bg-red-50 px-2 py-1 rounded-md font-bold text-[10px] dark:bg-red-900/30 dark:text-red-300"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {evaluations.length === 0 && !isLoadingHistory && (
+                                <tr>
+                                    <td colSpan="5" className="p-8 text-center text-xs text-gray-400 italic">No formal evaluations filed in database records.</td>
+                                </tr>
+                            )}
+                            {isLoadingHistory && (
+                                <tr>
+                                    <td colSpan="5" className="p-8 text-center text-xs text-gray-400 italic">Loading evaluation history...</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             </div>
+
+            {selectedHistoricalEval && (
+                <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-[9999] flex justify-center items-center p-4">
+                    <div className="bg-white dark:bg-gray-800 w-full max-w-5xl rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 flex flex-col max-h-[85vh] overflow-hidden">
+                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/40 shrink-0">
+                            <div>
+                                <h3 className="font-bold text-sm dark:text-white">Full Appraisal Transcript Summary</h3>
+                                <p className="text-[10px] text-gray-400 font-bold font-mono uppercase mt-0.5">
+                                    Assessed Employee: {getUserName(selectedHistoricalEval.employee_id)}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedHistoricalEval(null)}
+                                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm font-black p-1 transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto flex-1 min-h-0 space-y-6 text-xs">
+                            <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-900 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
+                                <div>
+                                    <span className="text-gray-400 block font-normal text-[11px]">Final Calculated Index Score:</span>
+                                    <b className="text-base text-blue-600 dark:text-blue-400 block mt-1">{selectedHistoricalEval.final_score ?? selectedHistoricalEval.rating ?? 0} Points</b>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 block font-normal text-[11px]">Issuance Log Timestamp:</span>
+                                    <b className="text-sm text-gray-800 dark:text-gray-100 block mt-1 font-mono">
+                                        {selectedRecordDate(selectedHistoricalEval) ? new Date(selectedRecordDate(selectedHistoricalEval)).toLocaleString('en-GB') : 'Pending'}
+                                    </b>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                                {SECTIONS.map((section) => (
+                                    <div key={section.id} className="space-y-3 bg-gray-50/30 dark:bg-gray-900/10 p-4 rounded-xl border border-gray-100/70 dark:border-gray-700/50">
+                                        <h4 className="font-bold text-blue-600 dark:text-blue-400 tracking-wide uppercase text-[11px] pb-1 border-b border-gray-100 dark:border-gray-700">
+                                            {section.title}
+                                        </h4>
+                                        <div className="space-y-2">
+                                            {section.items.map((item, index) => {
+                                                const scoreValue = selectedHistoricalEval.scores?.[item.id] || '--';
+                                                const matchedLabel = SCORE_OPTIONS.find((option) => option.val === scoreValue)?.label || 'Unmarked';
+
+                                                return (
+                                                    <div key={item.id} className="flex justify-between items-start py-1.5 border-b border-gray-50 dark:border-gray-800/40 gap-4 last:border-none">
+                                                        <span className="text-gray-600 dark:text-gray-300 pr-2">
+                                                            {index + 1}. {item.text}
+                                                        </span>
+                                                        <span className="font-mono bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded text-blue-600 dark:text-blue-400 shrink-0 text-[10px] font-bold h-fit align-middle">
+                                                            {matchedLabel}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                                <h4 className="font-bold text-gray-400 uppercase tracking-wider text-[10px] mb-1">Supervisor Final Concluding Remarks</h4>
+                                <p className="p-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-xl italic text-gray-700 dark:text-gray-300">
+                                    "{selectedHistoricalEval.comments || selectedHistoricalEval.review_text || 'No written summary filed.'}"
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 flex justify-end shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedHistoricalEval(null)}
+                                className="bg-gray-800 text-white hover:bg-gray-900 px-5 py-2 font-bold rounded-xl text-xs dark:bg-blue-600 dark:hover:bg-blue-700 transition shadow-sm"
+                            >
+                                Close Transcript
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

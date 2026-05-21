@@ -67,6 +67,16 @@ The backend currently exposes:
 - `POST /api/ai/chat`
 - `GET /health`
 
+Database migrations for Supabase live in [backend/migrations](backend/migrations). The performance review schema now includes:
+
+- `scores` - JSON rubric scores keyed by competency id
+- `final_score` - calculated percentage index
+- `comments` - supervisor summary remarks
+- `review_text` - legacy free-text review field for compatibility
+- `rating` - legacy summary rating for compatibility
+- `date` - business date used by review history views
+- `created_at` - timestamp used for audit ordering
+
 ## Deployment
 
 The repository includes `vercel.json` for deployment support. Connect the project to Vercel or your preferred host and point the frontend and backend to the correct environment variables.

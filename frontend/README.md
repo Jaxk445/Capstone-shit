@@ -249,9 +249,19 @@ Key database tables in Supabase:
 - `tasks` - Task data and assignments
 - `attendance` - Clock in and out records
 - `leave_requests` - Leave request information
-- `performance_reviews` - Review scores and feedback
+- `performance_reviews` - Review scores, rubric JSON, final score, and supervisor feedback
 - `contributions` - Daily activity logs
 - `notifications` - User notifications
+
+`performance_reviews` now expects these fields:
+
+- `scores`
+- `final_score`
+- `comments`
+- `review_text`
+- `rating`
+- `date`
+- `created_at`
 
 ## Security Practices
 

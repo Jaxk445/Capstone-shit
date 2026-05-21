@@ -1,190 +1,197 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { sanitizeContribution, sanitizeText } from '../utils/sanitizer';
-import { 
-    Briefcase, 
-    Send, 
-    Filter, 
-    Calendar, 
-    User, 
-} from 'lucide-react'; // Assuming you have lucide-react, if not, remove icons or use text
 
-const CATEGORIES = [
-    { name: 'General', color: 'bg-gray-100 text-gray-700 border-gray-200', active: 'bg-gray-800 text-white border-gray-800' },
-    { name: 'Innovation', color: 'bg-purple-50 text-purple-700 border-purple-200', active: 'bg-purple-600 text-white border-purple-600' },
-    { name: 'Bug Fix', color: 'bg-red-50 text-red-700 border-red-200', active: 'bg-red-600 text-white border-red-600' },
-    { name: 'Client Help', color: 'bg-blue-50 text-blue-700 border-blue-200', active: 'bg-blue-600 text-white border-blue-600' },
-    { name: 'Overtime', color: 'bg-amber-50 text-amber-700 border-amber-200', active: 'bg-amber-600 text-white border-amber-600' },
-];
-
-const ContributionsView = ({ userProfile, contributions, allUsers, fetchContributions }) => {
-    const [newContribution, setNewContribution] = useState('');
-    const [category, setCategory] = useState('General');
+/**
+ * COMPONENT: ContributionsView
+ * PURPOSE: Interactive Intern Discussion Forum and shared Help Desk platform.
+ * DESIGN PATTERN: Flattened thread timeline mapping nested comment nodes via a single JSONB array column.
+ * SECURITY: Enforces item-level role tracking so employees can only eliminate rows they personally created.
+ */
+const ContributionsView = ({ userProfile, contributions = [], allUsers = [], fetchContributions }) => {
+    // --- POST COMPOSER FORUM STATES ---
+    const [newPost, setNewPost] = useState('');
+    const [category, setCategory] = useState('General Discussion');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [submitError, setSubmitError] = useState('');
-    const [submitSuccess, setSubmitSuccess] = useState(false);
     
-    // Filters
-    const [selectedEmployee, setSelectedEmployee] = useState('all');
-    const [selectedDate, setSelectedDate] = useState('');
-    
-    const VALID_CATEGORY_NAMES = CATEGORIES.map(c => c.name);
-    const toSafeText = (value) => sanitizeText(String(value || ''));
+    // --- NESTED COMMENT TRACKING ENGINE BUFFERS ---
+    const [replyInputs, setReplyInputs] = useState({}); // Stores key-value tracking texts per card ID
+    const [submittingReplyId, setSubmittingReplyId] = useState(null); // Local loading state for reply dispatches
 
-    const usersForFilter = allUsers.sort((a, b) => toSafeText(a.name).localeCompare(toSafeText(b.name)));
+    // --- TIMELINE FILTER SELECTION CONTROLS ---
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('all');
 
-    const handleSubmit = async () => {
-        setSubmitError('');
-        setSubmitSuccess(false);
+    // Sanitized forum tags mapping consistent aesthetic border configurations
+    const FORUM_CATEGORIES = [
+        { name: 'General Discussion', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600', active: 'bg-blue-600 text-white border-blue-600' },
+        { name: 'Help Request ❓', color: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800', active: 'bg-amber-500 text-white border-amber-500' },
+        { name: 'Urgent Blocker 🚨', color: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800', active: 'bg-red-600 text-white border-red-600' },
+        { name: 'Project Milestone 🎉', color: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800', active: 'bg-purple-600 text-white border-purple-600' },
+    ];
 
-        const sanitized = sanitizeContribution(newContribution);
+    // --- UTILITY USER DICTIONARY MATCHERS ---
+    const getUserName = (id) => allUsers.find(u => String(u.id) === String(id))?.name || 'Unknown User';
+    const getUserRole = (id) => allUsers.find(u => String(u.id) === String(id))?.role || 'employee';
 
-        if (!sanitized.trim()) {
-            setSubmitError('Please enter a valid activity description.');
-            return;
-        }
+    // =========================================================================
+    // ⚙️ BACKEND MUTATION PIPELINES (SUPABASE TRANSACTION CONTROLLERS)
+    // =========================================================================
 
-        if (!VALID_CATEGORY_NAMES.includes(category)) {
-            setSubmitError('Invalid category selected.');
-            return;
-        }
-
-        // Max Length Check (5000 chars)
-        if (sanitized.length > 5000) {
-            setSubmitError('Description is too long (max 5000 characters).');
-            return;
-        }
-
+    /**
+     * TRANSACTION: handleCreateTask (Thread Composer Pipeline)
+     * PURPOSE: Inserts a brand new global discussion topic row onto the board.
+     * SCHEMA METRICS: Instantiates an empty `replies: []` array field block natively on row creation.
+     */
+    const handleCreateThread = async () => {
+        if (!newPost.trim()) return;
         setIsSubmitting(true);
         try {
-            const { error } = await supabase.from('contributions').insert({
-                // employee_id comes from userProfile (derived from JWT), NOT from user input
+            await supabase.from('contributions').insert({
                 employee_id: userProfile.id,
-                // date assigned here, not user-supplied
                 date: new Date().toISOString().split('T')[0],
-                contribution: sanitized,
+                contribution: newPost.trim(),
                 category: category,
+                replies: [] // Injects base schema array node targets
             });
-
-            if (error) {
-                // Handle DB-level constraint violations gracefully
-                if (error.code === '23514') {
-                    setSubmitError('Invalid input. Please check your entry and try again.');
-                } else {
-                    setSubmitError('Something went wrong. Please try again.');
-                }
-                console.error('Supabase insert error:', error);
-                return;
-            }
-
-            setNewContribution('');
-            setSubmitSuccess(true);
-            setTimeout(() => setSubmitSuccess(false), 3000);
-            fetchContributions();
-        } catch (err) {
-            setSubmitError('Something went wrong. Please try again.');
-            console.error('Unexpected error:', err);
+            setNewPost('');
+            fetchContributions(); // Invalidates parent layout caches to force re-evaluation vectors
+        } catch (error) {
+            console.error("Error creating post:", error);
         } finally {
             setIsSubmitting(false);
         }
-
     };
 
-    const getUserName = (id) => toSafeText(allUsers.find(u => u.id === id)?.name || 'Unknown');
-
-    const filteredContributions = contributions.filter(item => {
-        const matchEmployee = selectedEmployee === 'all' || item.employee_id === selectedEmployee;
-        const matchDate = !selectedDate || item.date === selectedDate;
+    /**
+     * TRANSACTION: handleDeleteThread
+     * PURPOSE: Performs target parameter match removals on public.contributions.
+     * SECURITY: Database will drop instructions if Row-Level Security checks validate unauthorized parameters.
+     */
+    const handleDeleteThread = async (postId) => {
+        if (!confirm("Are you sure you want to permanently delete this discussion thread?")) return;
         
-        if (userProfile.role !== 'supervisor') {
-            return item.employee_id === userProfile.id && matchDate;
+        const { error } = await supabase
+            .from('contributions')
+            .delete()
+            .eq('id', postId);
+
+        if (error) {
+            alert("Failed to delete thread: " + error.message);
+        } else {
+            fetchContributions(); // Refresh live view feeds state cache
         }
-        return matchEmployee && matchDate;
+    };
+
+    /**
+     * TRANSACTION: handleSendReply
+     * PURPOSE: Appends a newly compiled nested object matrix into the matching row array.
+     * CRITICAL LOGIC: Pulls current cached comment references, expands the dataset with a distinct 
+     * randomized reply node key pointer, and performs an absolute row update mutation payload.
+     */
+    const handleSendReply = async (postId, currentReplies = []) => {
+        const text = replyInputs[postId];
+        if (!text || !text.trim()) return;
+
+        setSubmittingReplyId(postId);
+        
+        // Assembles a customized node index tracking item payload mapping
+        const nextReplyObject = {
+            id: `reply-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            author_id: userProfile.id,
+            message: text.trim(),
+            timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        };
+
+        // Combines existing historical loops alongside your new comment element trace
+        const updatedRepliesArray = [...currentReplies, nextReplyObject];
+
+        const { error } = await supabase
+            .from('contributions')
+            .update({ replies: updatedRepliesArray })
+            .eq('id', postId);
+
+        if (error) {
+            alert("Failed to submit reply: " + error.message);
+        } else {
+            // Flushes the specific input buffer target field trace cleanly upon success
+            setReplyInputs(prev => ({ ...prev, [postId]: '' })); 
+            fetchContributions();
+        }
+        setSubmittingReplyId(null);
+    };
+
+    // =========================================================================
+    // 🔍 REAL-TIME SEARCH INDEX FILTER PIPELINES
+    // =========================================================================
+    const filteredThreads = contributions.filter(post => {
+        const matchesSearch = post.contribution.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                             getUserName(post.employee_id).toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesCategory = selectedCategory === 'all' || post.category === selectedCategory;
+        return matchesSearch && matchesCategory;
     });
 
     return (
-        <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
-            {/* HEADER */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-4">
+        <div className="p-8 max-w-5xl mx-auto space-y-6">
+            
+            {/* --- LAYOUT HEADER CONTROLS --- */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <Briefcase className="w-6 h-6 text-blue-600" />
-                        Activity Logs
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                        💬 Intern Discussion Forum & Help Desk
                     </h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Track and manage daily operational activities.
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                        Ask questions, declare blockers, and collaborate with team members and supervisors.
                     </p>
                 </div>
-                
-                {/* SUPERVISOR FILTERS */}
-                {userProfile.role === 'supervisor' && (
-                    <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg flex flex-wrap items-end gap-3 border border-gray-200 dark:border-gray-700">
-                        <div>
-                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 tracking-wider">Employee</label>
-                            <div className="relative">
-                                <User className="w-3 h-3 absolute left-2 top-2.5 text-gray-400" />
-                                <select 
-                                    value={selectedEmployee}
-                                    onChange={(e) => setSelectedEmployee(e.target.value)}
-                                    className="pl-7 pr-8 py-1.5 w-32 md:w-40 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                >
-                                    <option value="all">All Staff</option>
-                                    {usersForFilter.map(u => <option key={u.id} value={u.id}>{toSafeText(u.name)}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 tracking-wider">Date</label>
-                            <div className="relative">
-                                <Calendar className="w-3 h-3 absolute left-2 top-2.5 text-gray-400" />
-                                <input 
-                                    type="date" 
-                                    value={selectedDate}
-                                    onChange={(e) => setSelectedDate(e.target.value)}
-                                    className="pl-7 pr-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                />
-                            </div>
-                        </div>
-                        {(selectedEmployee !== 'all' || selectedDate) && (
-                            <button 
-                                onClick={() => { setSelectedEmployee('all'); setSelectedDate(''); }}
-                                className="text-xs text-red-600 hover:text-red-700 font-medium px-2 py-2 mb-0.5"
-                            >
-                                Clear
-                            </button>
-                        )}
-                    </div>
-                )}
+
+                {/* TIMELINE FILTERS CONTAINER WRAPPERS */}
+                <div className="flex gap-2 w-full md:w-auto">
+                    <input 
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search threads or names..."
+                        className="p-2 text-xs border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:border-blue-500 bg-white dark:bg-gray-800 dark:text-white w-full md:w-56 shadow-sm"
+                    />
+                    <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="p-2 text-xs border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:border-blue-500 bg-white dark:bg-gray-800 dark:text-white shadow-sm"
+                    >
+                        <option value="all">All Channels</option>
+                        {FORUM_CATEGORIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                </div>
             </div>
 
-            {/* INPUT CARD */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <div className="p-4 md:p-6">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                        <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
-                        LOG NEW ACTIVITY
+            {/* --- COMPOSER TOP INPUT SHEET PANEL WIDGET --- */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div className="p-5">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="w-1 h-3.5 bg-blue-500 rounded-full"></span>
+                        Start a New Discussion Thread
                     </h3>
                     
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3">
                         <textarea 
-                            value={newContribution} 
-                            onChange={(e) => setNewContribution(sanitizeText(e.target.value).slice(0, 5000))}
-                            className="w-full p-4 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none dark:bg-gray-700/50 dark:border-gray-600 dark:text-white dark:focus:bg-gray-700"
-                            placeholder="What did you work on today?"
+                            value={newPost} 
+                            onChange={(e) => setNewPost(e.target.value)}
+                            className="w-full p-4 border border-gray-100 rounded-xl text-xs bg-gray-50/50 focus:bg-white focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all resize-none dark:bg-gray-900/40 dark:border-gray-600 dark:text-white dark:focus:bg-gray-900"
+                            placeholder="What do you want to ask or share with the portal board?"
                             rows="3"
                         ></textarea>
                         
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                            {/* Categories */}
-                            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                                {CATEGORIES.map(cat => {
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div className="flex flex-wrap gap-1.5">
+                                {FORUM_CATEGORIES.map(cat => {
                                     const isSelected = category === cat.name;
                                     return (
                                         <button 
                                             key={cat.name} 
+                                            type="button"
                                             onClick={() => setCategory(cat.name)}
-                                            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 ${
-                                                isSelected ? cat.active + ' shadow-sm scale-105' : cat.color + ' hover:opacity-80'
+                                            className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-all duration-150 ${
+                                                isSelected ? cat.active + ' shadow-sm' : cat.color + ' hover:opacity-80'
                                             }`}
                                         >
                                             {cat.name}
@@ -193,83 +200,136 @@ const ContributionsView = ({ userProfile, contributions, allUsers, fetchContribu
                                 })}
                             </div>
 
-                            {/* Submit Button */}
                             <button 
-                                onClick={handleSubmit} 
-                                disabled={!newContribution.trim() || isSubmitting}
-                                className={`w-full md:w-auto px-6 py-2 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 transition-all shadow-sm ${
-                                    !newContribution.trim() 
-                                    ? 'bg-gray-300 cursor-not-allowed dark:bg-gray-700' 
-                                    : 'bg-blue-600 hover:bg-blue-700 hover:shadow-md active:transform active:scale-95'
+                                onClick={handleCreateThread} 
+                                disabled={!newPost.trim() || isSubmitting}
+                                className={`w-full sm:w-auto px-5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow ${
+                                    !newPost.trim() ? 'bg-gray-300 cursor-not-allowed dark:bg-gray-700' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
                                 }`}
                             >
-                                {isSubmitting ? 'Saving...' : (
-                                    <>
-                                        Log Activity <Send className="w-4 h-4" />
-                                    </>
-                                )}
+                                {isSubmitting ? 'Posting...' : 'Publish Thread'}
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* LOGS TABLE */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-gray-50/50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                                <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Date</th>
-                                <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Employee</th>
-                                <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Category</th>
-                                <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {filteredContributions.length > 0 ? (
-                                filteredContributions.map(item => (
-                                    <tr key={item.id} className="group hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-colors">
-                                        <td className="p-4 text-sm text-gray-500 dark:text-gray-400 font-mono whitespace-nowrap">
-                                            {item.date}
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600">
-                                                    {getUserName(item.employee_id).charAt(0)}
-                                                </div>
-                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                                    {getUserName(item.employee_id)}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                                                CATEGORIES.find(c => c.name === item.category)?.color || 'bg-gray-100 text-gray-600 border-gray-200'
-                                            }`}>
-                                                {toSafeText(item.category)}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-sm text-gray-600 dark:text-gray-300 leading-relaxed group-hover:text-gray-900 dark:group-hover:text-white">
-                                            {toSafeText(item.contribution)}
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan="4">
-                                        <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                                            <div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center mb-3">
-                                                <Filter className="w-6 h-6 text-gray-300" />
-                                            </div>
-                                            <p className="text-sm font-medium">No logs found matching your criteria.</p>
+            {/* --- MASTER FORUM TIMELINE FEEDS RENDER LOOP --- */}
+            <div className="space-y-4">
+                {filteredThreads.map(post => {
+                    const postReplies = post.replies || [];
+                    const isHelpRequest = post.category.includes('Help') || post.category.includes('Blocker');
+                    
+                    // SECURITY VERIFICATION LOGIC: Grants removal credentials if administrative role parameters 
+                    // evaluate to 'supervisor', or if the current token session user matches the initial thread creator index
+                    const canDelete = userProfile.role === 'supervisor' || String(post.employee_id) === String(userProfile.id);
+
+                    return (
+                        <div key={post.id} className={`bg-white dark:bg-gray-800 rounded-2xl border shadow-sm p-5 space-y-4 dark:border-gray-700/60 ${
+                            isHelpRequest ? 'border-l-4 border-l-amber-500 dark:border-l-amber-500' : 'border-gray-100'
+                        }`}>
+                            {/* Card Parent Header Context Blocks */}
+                            <div className="flex justify-between items-start gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                                        getUserRole(post.employee_id) === 'supervisor' ? 'bg-gradient-to-tr from-yellow-500 to-amber-600 text-slate-900' : 'bg-blue-100 text-blue-600 dark:bg-slate-700 dark:text-blue-400'
+                                    }`}>
+                                        {getUserName(post.employee_id).charAt(0)}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="font-bold text-gray-800 text-sm dark:text-gray-100">{getUserName(post.employee_id)}</h4>
+                                            {getUserRole(post.employee_id) === 'supervisor' && (
+                                                <span className="text-[9px] font-extrabold tracking-wider uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-1.5 py-0.5 rounded border border-amber-200">Supervisor</span>
+                                            )}
                                         </div>
-                                    </td>
-                                </tr>
+                                        <p className="text-[10px] font-bold text-gray-400 font-mono uppercase">📅 Thread started: {post.date}</p>
+                                    </div>
+                                </div>
+                                
+                                {/* INTERACTION ACTION CONTROLS LAYOUT */}
+                                <div className="flex items-center gap-2">
+                                    <span className={`inline-block px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase tracking-wide border ${
+                                        FORUM_CATEGORIES.find(c => c.name === post.category)?.color || 'bg-gray-100 text-gray-600'
+                                    }`}>
+                                        {post.category}
+                                    </span>
+
+                                    {/* RENDERS INTERACTION TRASH CONTROLS ONLY IF AUTHORIZATION CHECKS PASS */}
+                                    {canDelete && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteThread(post.id)}
+                                            className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                            title="Delete Thread"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Core Initial Message Thread Box */}
+                            <p className="text-gray-700 dark:text-gray-200 text-xs md:text-sm whitespace-pre-wrap pl-1 leading-relaxed">
+                                {post.contribution}
+                            </p>
+
+                            {/* --- NESTED SUB-COMMENT REPLIES ACCORDION FEED --- */}
+                            {postReplies.length > 0 && (
+                                <div className="bg-gray-50/50 dark:bg-gray-900/30 rounded-xl p-4 border dark:border-gray-700/60 divide-y divide-gray-100 dark:divide-gray-700 space-y-3">
+                                    {postReplies.map((reply) => (
+                                        <div key={reply.id} className="pt-3 first:pt-0 flex gap-3 items-start">
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                                getUserRole(reply.author_id) === 'supervisor' ? 'bg-amber-500 text-slate-900' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                            }`}>
+                                                {getUserName(reply.author_id).charAt(0)}
+                                            </div>
+                                            <div className="space-y-0.5 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{getUserName(reply.author_id)}</span>
+                                                    {getUserRole(reply.author_id) === 'supervisor' && (
+                                                        <span className="text-[8px] font-bold bg-amber-500/20 text-amber-700 px-1 rounded">Staff</span>
+                                                    )}
+                                                    <span className="text-[9px] text-gray-400 font-medium ml-auto font-mono">{reply.timestamp}</span>
+                                                </div>
+                                                <p className="text-gray-600 dark:text-gray-300 text-xs leading-relaxed">{reply.message}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
-                        </tbody>
-                    </table>
-                </div>
+
+                            {/* --- INLINE TRANSACTIONAL COMMENT FOOTER INPUT --- */}
+                            <div className="pt-3 border-t border-gray-50 dark:border-gray-700 flex gap-2">
+                                <input 
+                                    type="text"
+                                    value={replyInputs[post.id] || ''}
+                                    onChange={(e) => setReplyInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSendReply(post.id, postReplies)}
+                                    placeholder={userProfile.role === 'supervisor' ? "Provide guidance or feedback..." : "Write a comment or answer..."}
+                                    className="flex-1 p-2 text-xs border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:border-blue-500 bg-gray-50/50 dark:bg-gray-900/40 dark:text-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => handleSendReply(post.id, postReplies)}
+                                    disabled={submittingReplyId === post.id || !(replyInputs[post.id] || '').trim()}
+                                    className="bg-gray-800 text-white hover:bg-gray-900 text-xs font-bold px-4 py-2 rounded-xl shadow-sm transition disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-700"
+                                >
+                                    {submittingReplyId === post.id ? '...' : 'Reply'}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {/* Empty State Result Block Sheet */}
+                {filteredThreads.length === 0 && (
+                    <div className="text-center p-12 text-gray-400 dark:text-gray-500 text-xs italic">
+                        No discussion threads match your filter layout criteria.
+                    </div>
+                )}
             </div>
         </div>
     );

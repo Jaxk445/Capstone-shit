@@ -4,33 +4,31 @@ import {
     Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 
-const DashboardView = ({ userProfile, tasks, leaveRequests, attendance, allUsers, reviews }) => {
+const DashboardView = ({
+    userProfile,
+    tasks = [],
+    leaveRequests = [],
+    attendance = [],
+    allUsers = [],
+    reviews = []
+}) => {
     const [selectedEmployee, setSelectedEmployee] = useState(userProfile.role === 'supervisor' ? 'all' : userProfile.id);
     const [showSettings, setShowSettings] = useState(false);
 
-    // --- 1. CONFIGURABLE WIDGET STATE ---
     const [widgets, setWidgets] = useState(() => {
         const saved = localStorage.getItem('dashboard_widgets');
-        if (!saved) {
-            return {
-                metrics: true,
-                attendanceChart: true,
-                taskChart: true,
-                recentReviews: true
-            };
-        }
-        
+
         try {
-            const parsed = JSON.parse(saved);
-            // Validate that parsed data has the expected structure
-            if (typeof parsed === 'object' && parsed !== null) {
-                return parsed;
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (typeof parsed === 'object' && parsed !== null) {
+                    return parsed;
+                }
             }
         } catch (error) {
             console.error('Error parsing stored widgets:', error);
         }
-        
-        // Return defaults if parsing failed
+
         return {
             metrics: true,
             attendanceChart: true,
@@ -47,47 +45,34 @@ const DashboardView = ({ userProfile, tasks, leaveRequests, attendance, allUsers
         setWidgets(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    // --- 2. SYNCHRONIZED METRICS (THE FIX) ---
-    
-    // A. PENDING TASKS (Active Workload)
-    // Supervisor: Sees TOTAL tasks currently being worked on (To Do + In Progress + Revision)
-    // Employee: Sees ONLY tasks assigned to them
     const activeWorkload = tasks.filter(t => {
         const isActive = t.status === 'To Do' || t.status === 'In Progress' || t.status === 'Revision Needed';
-        if (userProfile.role === 'supervisor') return isActive; 
+        if (userProfile.role === 'supervisor') return isActive;
         return isActive && (t.assigned_to || []).includes(userProfile.id);
     }).length;
 
-    // B. PENDING APPROVALS (Action Items)
-    // This effectively counts "Ready for Review" items + "Pending Leave"
     let approvalCount = 0;
-    let approvalLabel = "No actions needed";
+    let approvalLabel = 'System operations clean';
 
     if (userProfile.role === 'supervisor') {
-        // Supervisor Logic:
-        // 1. Leave requests waiting for me
         const pendingLeaves = leaveRequests.filter(r => r.status === 'Pending').length;
-        // 2. Tasks in "Ready for Review" column (Status = Completed)
         const pendingTaskReviews = tasks.filter(t => t.status === 'Completed').length;
-        
+
         approvalCount = pendingLeaves + pendingTaskReviews;
-        
+
         if (approvalCount > 0) {
-            approvalLabel = `${pendingLeaves} leave, ${pendingTaskReviews} tasks`;
+            approvalLabel = `${pendingLeaves} leave forms, ${pendingTaskReviews} tasks pending review`;
         }
     } else {
-        // Employee Logic:
-        // Items I submitted that are waiting for the boss
         const myPendingLeaves = leaveRequests.filter(r => r.employee_id === userProfile.id && r.status === 'Pending').length;
-        const myPendingTasks = tasks.filter(t => 
+        const myPendingTasks = tasks.filter(t =>
             (t.assigned_to || []).includes(userProfile.id) && t.status === 'Completed'
         ).length;
-        
+
         approvalCount = myPendingLeaves + myPendingTasks;
-        if (approvalCount > 0) approvalLabel = "Waiting for supervisor";
+        if (approvalCount > 0) approvalLabel = 'Awaiting supervisor confirmation feedback';
     }
 
-    // C. Leave Days Taken (Same as before)
     const getDaysDiff = (start, end) => {
         const date1 = new Date(start);
         const date2 = new Date(end);
@@ -95,40 +80,37 @@ const DashboardView = ({ userProfile, tasks, leaveRequests, attendance, allUsers
     };
 
     const leaveDaysTaken = leaveRequests
-        .filter(req => req.employee_id === userProfile.id && req.status === "Approved")
+        .filter(req => req.employee_id === userProfile.id && req.status === 'Approved')
         .reduce((total, req) => total + getDaysDiff(req.start_date, req.end_date), 0);
 
     const getUserName = (id) => {
-        if (!allUsers || !id) return 'Unknown';
+        if (!allUsers || !id) return 'Unknown Officer';
         const match = allUsers.find(u => String(u.id) === String(id));
-        return match ? match.name : 'Unknown';
+        return match ? match.name : 'Unknown Officer';
     };
 
-    // --- 3. CHART DATA PROCESSING ---
     const processChartData = () => {
-        const months = ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
         const users = allUsers.filter(u => u.role === 'employee');
 
         const attData = [];
         const taskData = [];
 
         months.forEach((month, index) => {
-            const targetMonth = index + 6; 
+            const targetMonth = index;
             const attMonth = { name: month };
             const taskMonth = { name: month };
 
             users.forEach(u => {
-                // ATTENDANCE
                 const presentCount = attendance.filter(a =>
                     a.employee_id === u.id &&
                     new Date(a.date).getMonth() === targetMonth &&
                     (a.status === 'Present' || a.status === 'Late')
                 ).length;
-                
-                // TASKS (Approved/Done)
-                const completedCount = tasks.filter(t => 
-                    (t.assigned_to || []).includes(u.id) && 
-                    t.status === 'Approved' && 
+
+                const completedCount = tasks.filter(t =>
+                    (t.assigned_to || []).includes(u.id) &&
+                    t.status === 'Approved' &&
                     new Date(t.due_date).getMonth() === targetMonth
                 ).length;
 
@@ -146,45 +128,44 @@ const DashboardView = ({ userProfile, tasks, leaveRequests, attendance, allUsers
 
     const { attData, taskData } = processChartData();
     const employeeUsers = allUsers.filter(u => u.role === 'employee');
-    const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#0088FE', '#00C49F'];
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
     return (
-        <div className="p-8 relative">
-            
-            {/* --- HEADER --- */}
-            <div className="flex justify-between items-start mb-6">
+        <div className="p-8 relative space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 dark:border-gray-700/60 pb-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">Welcome, {userProfile.name}!</h1>
-                    <p className="text-gray-500 dark:text-gray-400">Here's your activity overview.</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Operational monitoring systems status review matrix.</p>
                 </div>
-                
-                <div className="relative">
-                    <button 
-                        onClick={() => setShowSettings(!showSettings)} 
-                        className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+
+                <div className="relative self-end sm:self-center">
+                    <button
+                        type="button"
+                        onClick={() => setShowSettings(!showSettings)}
+                        className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-xl border transition text-xs dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700"
                     >
-                        <span>⚙️ Customize</span>
+                        <span>⚙️ Configure Metrics</span>
                     </button>
 
                     {showSettings && (
-                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 z-50 p-4 dark:bg-gray-800 dark:border-gray-600">
-                            <h3 className="font-bold text-gray-700 mb-3 dark:text-gray-200">Visible Widgets</h3>
-                            <div className="space-y-2">
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input type="checkbox" checked={widgets.metrics} onChange={() => toggleWidget('metrics')} className="form-checkbox h-5 w-5 text-blue-600"/>
-                                    <span className="text-gray-700 dark:text-gray-300">Key Metrics</span>
+                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 z-50 p-4 dark:bg-gray-800 dark:border-gray-700 animate-scale-up">
+                            <h3 className="font-bold text-xs text-gray-400 uppercase tracking-wider mb-3">Visible UI Cards</h3>
+                            <div className="space-y-2.5 text-xs font-bold text-gray-700 dark:text-gray-300">
+                                <label className="flex items-center space-x-3 cursor-pointer hover:opacity-80">
+                                    <input type="checkbox" checked={widgets.metrics} onChange={() => toggleWidget('metrics')} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"/>
+                                    <span>Key Metrics Summary</span>
                                 </label>
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input type="checkbox" checked={widgets.attendanceChart} onChange={() => toggleWidget('attendanceChart')} className="form-checkbox h-5 w-5 text-blue-600"/>
-                                    <span className="text-gray-700 dark:text-gray-300">Attendance Chart</span>
+                                <label className="flex items-center space-x-3 cursor-pointer hover:opacity-80">
+                                    <input type="checkbox" checked={widgets.attendanceChart} onChange={() => toggleWidget('attendanceChart')} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"/>
+                                    <span>Attendance Trends Line</span>
                                 </label>
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input type="checkbox" checked={widgets.taskChart} onChange={() => toggleWidget('taskChart')} className="form-checkbox h-5 w-5 text-blue-600"/>
-                                    <span className="text-gray-700 dark:text-gray-300">Task Completion Chart</span>
+                                <label className="flex items-center space-x-3 cursor-pointer hover:opacity-80">
+                                    <input type="checkbox" checked={widgets.taskChart} onChange={() => toggleWidget('taskChart')} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"/>
+                                    <span>Task Completion Bars</span>
                                 </label>
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input type="checkbox" checked={widgets.recentReviews} onChange={() => toggleWidget('recentReviews')} className="form-checkbox h-5 w-5 text-blue-600"/>
-                                    <span className="text-gray-700 dark:text-gray-300">Recent Reviews</span>
+                                <label className="flex items-center space-x-3 cursor-pointer hover:opacity-80">
+                                    <input type="checkbox" checked={widgets.recentReviews} onChange={() => toggleWidget('recentReviews')} className="form-checkbox rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"/>
+                                    <span>Recent Appraisals Sheet</span>
                                 </label>
                             </div>
                         </div>
@@ -192,77 +173,71 @@ const DashboardView = ({ userProfile, tasks, leaveRequests, attendance, allUsers
                 </div>
             </div>
 
-            {/* --- FILTER --- */}
             {(widgets.attendanceChart || widgets.taskChart) && userProfile.role === 'supervisor' && (
-                <div className="mb-6 flex justify-end">
+                <div className="flex justify-end bg-white p-3 rounded-2xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700 shadow-sm">
                     <select
                         value={selectedEmployee}
                         onChange={(e) => setSelectedEmployee(e.target.value)}
-                        className="p-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="p-2 text-xs border border-gray-200 rounded-xl shadow-sm bg-gray-50 dark:bg-gray-900 dark:border-gray-600 dark:text-white focus:outline-none font-bold"
                     >
-                        <option value="all">All Employees</option>
+                        <option value="all">All Intern Roster Entries</option>
                         {employeeUsers.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                     </select>
                 </div>
             )}
 
-            {/* --- WIDGETS --- */}
-            
-            {/* 1. METRICS */}
             {widgets.metrics && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 animate-fade-in-down">
-                    
-                    {/* A. Workload Card */}
-                    <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500 dark:bg-gray-800 dark:border-blue-400">
-                        <h3 className="font-bold text-lg text-gray-500 dark:text-gray-400">
-                            {userProfile.role === 'supervisor' ? 'Team Workload' : 'My Pending Tasks'}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-down">
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500 dark:bg-gray-800 dark:border-gray-700/60 dark:border-l-blue-500">
+                        <h3 className="font-bold text-xs text-gray-400 uppercase tracking-wider">
+                            {userProfile.role === 'supervisor' ? 'Team Active Workload' : 'My Pending Tasks'}
                         </h3>
-                        <div className="flex items-baseline gap-2">
-                            <p className="text-4xl font-bold text-gray-800 mt-2 dark:text-gray-100">{activeWorkload}</p>
-                            <span className="text-sm text-gray-400">active tasks</span>
+                        <div className="flex items-baseline gap-2 mt-2">
+                            <p className="text-4xl font-extrabold text-gray-800 dark:text-gray-100">{activeWorkload}</p>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Tasks Active</span>
                         </div>
                     </div>
 
-                    {/* B. Leave Card */}
-                    <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500 dark:bg-gray-800 dark:border-green-400">
-                        <h3 className="font-bold text-lg text-gray-500 dark:text-gray-400">Leave Taken</h3>
-                        <p className="text-4xl font-bold text-gray-800 mt-2 dark:text-gray-100">{leaveDaysTaken} <span className="text-sm font-normal text-gray-400">days</span></p>
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-green-500 dark:bg-gray-800 dark:border-gray-700/60 dark:border-l-green-500">
+                        <h3 className="font-bold text-xs text-gray-400 uppercase tracking-wider">Accredited Leave Days</h3>
+                        <div className="flex items-baseline gap-2 mt-2">
+                            <p className="text-4xl font-extrabold text-gray-800 dark:text-gray-100">{leaveDaysTaken}</p>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Days Closed</span>
+                        </div>
                     </div>
 
-                    {/* C. Approvals Card (Dynamic) */}
-                    <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-yellow-500 dark:bg-gray-800 dark:border-yellow-400">
-                        <h3 className="font-bold text-lg text-gray-500 dark:text-gray-400">
-                            {userProfile.role === 'supervisor' ? 'Approvals Needed' : 'Waiting Approval'}
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-yellow-500 dark:bg-gray-800 dark:border-gray-700/60 dark:border-l-yellow-500">
+                        <h3 className="font-bold text-xs text-gray-400 uppercase tracking-wider">
+                            {userProfile.role === 'supervisor' ? 'Approvals Outstanding' : 'Awaiting Operational Approval'}
                         </h3>
-                        <div className="flex flex-col justify-center h-full pb-2">
+                        <div className="flex flex-col mt-2 justify-center">
                             <div className="flex items-baseline gap-2">
-                                <p className="text-4xl font-bold text-gray-800 dark:text-gray-100">{approvalCount}</p>
-                                <span className="text-sm text-yellow-600 font-medium">items</span>
+                                <p className="text-4xl font-extrabold text-gray-800 dark:text-gray-100">{approvalCount}</p>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Items Flagged</span>
                             </div>
                             {approvalCount > 0 && (
-                                <p className="text-xs text-gray-400 mt-1">{approvalLabel}</p>
+                                <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 italic mt-1 bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded w-fit">{approvalLabel}</p>
                             )}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* 2. CHARTS */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {widgets.attendanceChart && (
-                    <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800">
-                        <h2 className="text-xl font-bold text-gray-800 mb-4 dark:text-gray-100">Attendance Trends</h2>
-                        <div style={{ width: '100%', height: 300 }}>
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700/60">
+                        <h2 className="text-sm font-bold text-gray-800 mb-4 dark:text-gray-100 uppercase tracking-wider text-gray-400">Attendance Trends Timeline</h2>
+                        <div style={{ width: '100%', height: 280 }} className="text-xs font-medium">
                             <ResponsiveContainer>
                                 <LineChart data={attData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-                                    <XAxis dataKey="name" stroke="#888" />
-                                    <YAxis stroke="#888" />
-                                    <Tooltip contentStyle={{ backgroundColor: '#333', border: 'none', color:'#fff', borderRadius:'8px' }} />
-                                    <Legend wrapperStyle={{ paddingTop: '10px' }}/>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.1} />
+                                    <XAxis dataKey="name" stroke="#94a3b8" fontStyle="bold" />
+                                    <YAxis stroke="#94a3b8" />
+                                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', color:'#fff', borderRadius:'12px', fontSize:'11px', fontWeight:'bold' }} />
+                                    <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '11px', fontWeight: 'bold' }}/>
                                     {employeeUsers.map((emp, index) => {
                                         if (selectedEmployee === 'all' || selectedEmployee === emp.id) {
-                                            return <Line key={emp.id} type="monotone" dataKey={emp.name} stroke={colors[index % colors.length]} strokeWidth={3} dot={{r:4}} />;
+                                            return <Line key={emp.id} type="monotone" dataKey={emp.name} stroke={colors[index % colors.length]} strokeWidth={3} dot={{r:3}} activeDot={{r:5}} />;
                                         }
                                         return null;
                                     })}
@@ -273,19 +248,19 @@ const DashboardView = ({ userProfile, tasks, leaveRequests, attendance, allUsers
                 )}
 
                 {widgets.taskChart && (
-                    <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800">
-                        <h2 className="text-xl font-bold text-gray-800 mb-4 dark:text-gray-100">Tasks Completed</h2>
-                        <div style={{ width: '100%', height: 300 }}>
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700/60">
+                        <h2 className="text-sm font-bold text-gray-800 mb-4 dark:text-gray-100 uppercase tracking-wider text-gray-400">Deliverables Completed Volume</h2>
+                        <div style={{ width: '100%', height: 280 }} className="text-xs font-medium">
                             <ResponsiveContainer>
                                 <BarChart data={taskData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-                                    <XAxis dataKey="name" stroke="#888" />
-                                    <YAxis stroke="#888" />
-                                    <Tooltip contentStyle={{ backgroundColor: '#333', border: 'none', color:'#fff', borderRadius:'8px' }} cursor={{fill: 'rgba(255,255,255,0.1)'}}/>
-                                    <Legend wrapperStyle={{ paddingTop: '10px' }}/>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.1} />
+                                    <XAxis dataKey="name" stroke="#94a3b8" fontStyle="bold" />
+                                    <YAxis stroke="#94a3b8" />
+                                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', color:'#fff', borderRadius:'12px', fontSize:'11px', fontWeight:'bold' }} cursor={{fill: 'rgba(255,255,255,0.05)'}}/>
+                                    <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '11px', fontWeight: 'bold' }}/>
                                     {employeeUsers.map((emp, index) => {
                                         if (selectedEmployee === 'all' || selectedEmployee === emp.id) {
-                                            return <Bar key={emp.id} dataKey={emp.name} fill={colors[index % colors.length]} radius={[4, 4, 0, 0]} />;
+                                            return <Bar key={emp.id} dataKey={emp.name} fill={colors[index % colors.length]} radius={[4, 4, 0, 0]} maxBarSize={30} />;
                                         }
                                         return null;
                                     })}
@@ -296,38 +271,46 @@ const DashboardView = ({ userProfile, tasks, leaveRequests, attendance, allUsers
                 )}
             </div>
 
-            {/* 3. REVIEWS */}
             {widgets.recentReviews && (
-                <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-4 dark:text-gray-100">Performance Overview</h2>
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700/60">
+                    <h2 className="text-sm font-bold text-gray-800 mb-4 dark:text-gray-100 uppercase tracking-wider text-gray-400">Institutional Performance Transcript Log</h2>
                     {reviews && reviews.length > 0 ? (
                         <div className="space-y-4">
-                            {reviews.slice(0, 3).map(review => ( 
-                                <div key={review.id} className="border-b pb-4 last:border-b-0 dark:border-gray-700">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div>
-                                            <p className="font-bold text-gray-800 dark:text-gray-100">
-                                                Review from: {getUserName(review.supervisor_id)}
-                                            </p>
-                                            {review.rating && (
-                                                <div className="flex items-center gap-2">
-                                                    <div className="flex text-yellow-400 text-sm">
-                                                        {[...Array(Math.round(review.rating))].map((_, i) => <span key={i}>★</span>)}
+                            {reviews.slice(0, 3).map(review => {
+                                const textToDisplay = review.comments || review.review_text || 'No technical observations recorded.';
+                                const truncatedText = textToDisplay.length > 100 ? textToDisplay.substring(0, 100) + '...' : textToDisplay;
+
+                                return (
+                                    <div key={review.id} className="border-b pb-4 last:border-b-0 last:pb-0 border-gray-50 dark:border-gray-700/60 animate-fade-in">
+                                        <div className="flex justify-between items-start gap-4 mb-2 text-xs">
+                                            <div className="space-y-1">
+                                                <p className="font-bold text-gray-800 dark:text-gray-200">
+                                                    Appraisal filed by: <span className="text-blue-600 dark:text-blue-400">{getUserName(review.supervisor_id)}</span>
+                                                </p>
+                                                {review.final_score !== undefined && (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex text-yellow-400 text-xs tracking-tighter">
+                                                            {[...Array(Math.max(1, Math.min(5, Math.round((review.final_score / 100) * 5))))].map((_, i) => <span key={i}>★</span>)}
+                                                        </div>
+                                                        <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400">
+                                                            Index: {review.final_score} Pts
+                                                        </span>
                                                     </div>
-                                                    <span className="text-xs text-gray-500 dark:text-gray-400">({review.rating})</span>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
+                                            <p className="text-[10px] font-bold text-gray-400 font-mono uppercase">
+                                                {review.created_at ? new Date(review.created_at).toLocaleDateString('en-GB') : (review.date || 'Pending Log')}
+                                            </p>
                                         </div>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">{review.date}</p>
+                                        <p className="text-gray-600 dark:text-gray-300 text-xs italic pl-1 leading-relaxed bg-gray-50/40 dark:bg-gray-900/20 p-3 rounded-xl border border-dashed dark:border-gray-700/40">
+                                            "{truncatedText}"
+                                        </p>
                                     </div>
-                                    <p className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap text-sm italic">
-                                        "{review.review_text.length > 100 ? review.review_text.substring(0, 100) + '...' : review.review_text}"
-                                    </p>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     ) : (
-                        <p className="text-center text-gray-500 py-8 dark:text-gray-400">No reviews yet.</p>
+                        <p className="text-center text-xs text-gray-400 py-8 dark:text-gray-500 italic">No formal framework appraisal scores logged inside data systems yet.</p>
                     )}
                 </div>
             )}
